@@ -148,13 +148,25 @@ final class ManualAndSmartEntryTests: XCTestCase {
         XCTAssertEqual(vm.queuedCandidates.count, 2)
         XCTAssertEqual(vm.highConfidenceEligibleCount, 1)
         
-        // Filter by low
-        vm.selectedFilter = .low
+        // Filter by low confidence
+        vm.selectedFilter = .lowConfidence
         XCTAssertEqual(vm.filteredCandidates.count, 1)
         XCTAssertEqual(vm.filteredCandidates.first?.merchantName, "Unknown")
         
-        // Accept candidate 1
+        // Filter by unrecognized merchant
+        vm.selectedFilter = .unrecognizedMerchant
+        XCTAssertEqual(vm.filteredCandidates.count, 1)
+        XCTAssertEqual(vm.filteredCandidates.first?.merchantName, "Unknown")
+        
+        // Filter by missing account
+        vm.selectedFilter = .missingAccount
+        XCTAssertEqual(vm.filteredCandidates.count, 2) // neither has an account set explicitly
+        
+        // Pre-populate transactions in persistent store for honest testing
         let container = DependencyContainer.inMemoryEmpty()
+        _ = try? await container.transactionService.createTransaction(candidate1)
+        _ = try? await container.transactionService.createTransaction(candidate2)
+        
         let appState = AppState()
         
         await vm.acceptCandidate(candidate1, container: container, appState: appState)

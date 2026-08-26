@@ -104,6 +104,9 @@ public struct ManualTransactionComposerView: View {
             .task {
                 await viewModel.loadData(container: container)
             }
+            .onAppear {
+                isAmountFocused = true
+            }
         }
     }
     

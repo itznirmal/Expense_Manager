@@ -14,6 +14,7 @@ public struct ReviewQueueView: View {
     @Environment(\.dependencyContainer) private var container
     
     @State private var viewModel = ReviewQueueViewModel()
+    @State private var showAcceptAllConfirmation = false
     
     public init() {}
     
@@ -73,9 +74,7 @@ public struct ReviewQueueView: View {
             
             if viewModel.highConfidenceEligibleCount > 0 {
                 Button(action: {
-                    Task {
-                        await viewModel.acceptAllEligible(container: container, appState: appState)
-                    }
+                    showAcceptAllConfirmation = true
                 }) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
@@ -87,6 +86,14 @@ public struct ReviewQueueView: View {
                     .padding(.vertical, 6)
                     .background(ColorTokens.incomeAccent.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .confirmationDialog("Accept All High Confidence?", isPresented: $showAcceptAllConfirmation, titleVisibility: .visible) {
+                    Button("Accept All (\(viewModel.highConfidenceEligibleCount))") {
+                        Task {
+                            await viewModel.acceptAllEligible(container: container, appState: appState)
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
                 }
             }
         }

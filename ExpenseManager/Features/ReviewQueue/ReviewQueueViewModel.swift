@@ -15,8 +15,9 @@ public final class ReviewQueueViewModel {
     
     public enum FilterTier: String, CaseIterable, Identifiable, Sendable {
         case all = "All"
-        case medium = "Medium"
-        case low = "Low"
+        case missingAccount = "Missing Account"
+        case lowConfidence = "Low Confidence"
+        case unrecognizedMerchant = "Unrecognized Merchant"
         
         public var id: String { rawValue }
     }
@@ -39,10 +40,12 @@ public final class ReviewQueueViewModel {
         switch selectedFilter {
         case .all:
             return queuedCandidates
-        case .medium:
-            return queuedCandidates.filter { $0.confidence.tier == .medium }
-        case .low:
+        case .missingAccount:
+            return queuedCandidates.filter { $0.accountSuggestion == nil }
+        case .lowConfidence:
             return queuedCandidates.filter { $0.confidence.tier == .low }
+        case .unrecognizedMerchant:
+            return queuedCandidates.filter { $0.merchantName.isEmpty || $0.merchantName.lowercased() == "unknown" }
         }
     }
     

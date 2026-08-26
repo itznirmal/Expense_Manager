@@ -81,10 +81,10 @@ public final class SmartTextComposerViewModel {
             return
         }
         
-        debounceTask = Task { @MainActor in
+        debounceTask = Task { [weak self] @MainActor in
             try? await Task.sleep(nanoseconds: 200_000_000) // 200ms debounce
             guard !Task.isCancelled else { return }
-            await self.parse(text: trimmed, parserService: parserService)
+            await self?.parse(text: trimmed, parserService: parserService)
         }
     }
     
