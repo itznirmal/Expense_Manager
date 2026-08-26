@@ -30,3 +30,9 @@ public protocol CategoryServiceProtocol: Sendable {
     /// Seeds default system categories if the category store is empty.
     func seedDefaultCategoriesIfNeeded() async throws
 }
+
+public extension CategoryServiceProtocol {
+    func fetchCategories() async throws -> [CategoryDTO] {
+        try await fetchCategories(type: nil)
+    }
+}

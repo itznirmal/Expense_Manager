@@ -62,8 +62,8 @@ public final class VoiceEntryViewModel {
     
     public func loadContext() async {
         do {
-            async let accounts = accountService.fetchAccounts()
-            async let categories = categoryService.fetchCategories()
+            async let accounts = accountService.fetchAccounts(includeArchived: false)
+            async let categories = categoryService.fetchCategories(type: nil)
             self.availableAccounts = try await accounts
             self.availableCategories = try await categories
         } catch {
@@ -215,21 +215,15 @@ public final class VoiceEntryViewModel {
             let selectedCategory = availableCategories.first { $0.name.localizedCaseInsensitiveContains(item.categorySuggestion ?? "") }
                 ?? availableCategories.first
             
-            _ = try await transactionService.createTransaction(
-                amount: item.amount,
-                currencyCode: item.currencyCode,
-                type: item.type,
-                merchant: item.merchantName.isEmpty ? "Voice Expense" : item.merchantName,
-                notes: item.notes ?? liveTranscript,
-                categoryID: selectedCategory?.id,
-                accountID: selectedAccount?.id,
-                destinationAccountID: nil,
-                paymentMethod: item.paymentMethod ?? .cash,
-                status: .cleared,
-                date: item.transactionDate,
-                tags: item.tags,
-                source: "voice"
-            )
+            var candidateToSave = item
+            candidateToSave.merchantName = item.merchantName.isEmpty ? "Voice Expense" : item.merchantName
+            candidateToSave.categorySuggestion = selectedCategory?.name
+            candidateToSave.accountSuggestion = selectedAccount?.name
+            candidateToSave.notes = item.notes ?? liveTranscript
+            candidateToSave.paymentMethod = item.paymentMethod ?? .cash
+            candidateToSave.source = .voice
+            
+            _ = try await transactionService.createTransaction(candidateToSave)
             
             // Persist learned merchant rule if category was specified
             if let ruleService = merchantRuleService,

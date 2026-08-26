@@ -74,16 +74,16 @@ public struct TransactionDirectionClassifier: Sendable {
             return DirectionClassification(type: .cashWithdrawal, confidence: 0.95, matchedKeywords: matchedWithdrawal)
         }
         
-        // 3. Check Transfer Keywords
-        let matchedTransfer = transferKeywords.filter { containsKeyword(in: lowercased, keyword: $0) }
-        if !matchedTransfer.isEmpty {
-            return DirectionClassification(type: .transfer, confidence: 0.92, matchedKeywords: matchedTransfer)
-        }
-        
-        // 4. Check Income Keywords
+        // 3. Check Income Keywords (Prioritized over generic Transfer keywords to prevent "credited by salary transfer" misclassification)
         let matchedIncome = incomeKeywords.filter { containsKeyword(in: lowercased, keyword: $0) }
         if !matchedIncome.isEmpty {
             return DirectionClassification(type: .income, confidence: 0.95, matchedKeywords: matchedIncome)
+        }
+        
+        // 4. Check Transfer Keywords
+        let matchedTransfer = transferKeywords.filter { containsKeyword(in: lowercased, keyword: $0) }
+        if !matchedTransfer.isEmpty {
+            return DirectionClassification(type: .transfer, confidence: 0.92, matchedKeywords: matchedTransfer)
         }
         
         // 5. Check Explicit Expense Keywords

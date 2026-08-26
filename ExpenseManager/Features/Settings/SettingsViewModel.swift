@@ -9,6 +9,7 @@
 import SwiftUI
 import Observation
 import UniformTypeIdentifiers
+import LocalAuthentication
 
 /// ViewModel managing application settings, CSV export, JSON backup/restore, biometrics, and database purging.
 @Observable
@@ -18,7 +19,6 @@ public final class SettingsViewModel {
     // MARK: - State Properties
     
     public var defaultCurrency: String = "INR"
-    public var requireBiometrics: Bool = false
     public var autoParseSMS: Bool = true
     
     public var isExportingCSV: Bool = false
@@ -46,6 +46,28 @@ public final class SettingsViewModel {
     
     public init(exportService: DataExportServiceProtocol = MockDataExportService()) {
         self.exportService = exportService
+    }
+    
+    // MARK: - Biometric Toggle Check (GT-66)
+    
+    public func toggleBiometrics(enable: Bool, appState: AppState) {
+        if enable {
+            let context = LAContext()
+            var error: NSError?
+            if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) ||
+               context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+                appState.requireBiometrics = true
+            } else {
+                appState.requireBiometrics = false
+                appState.showToast(
+                    title: "Biometrics Unavailable",
+                    message: error?.localizedDescription ?? "Face ID or Passcode is not configured on this device.",
+                    type: .warning
+                )
+            }
+        } else {
+            appState.requireBiometrics = false
+        }
     }
     
     // MARK: - CSV Export (AC-SEC-1 Protected)

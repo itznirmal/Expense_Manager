@@ -140,21 +140,7 @@ public final class SMSIngestionOrchestrator: Sendable {
         
         // Step 6: Execution (Auto-Save or Review Queue)
         if autoSaveIfEligible && confidenceEval.isAutoSaveEligible, let txnSvc = transactionService {
-            let savedRecord = try await txnSvc.createTransaction(
-                amount: candidate.amount,
-                currencyCode: candidate.currencyCode,
-                type: candidate.type,
-                merchant: candidate.merchantName,
-                notes: candidate.notes ?? "Imported via SMS",
-                categoryID: candidate.categorySuggestion,
-                accountID: candidate.accountSuggestion,
-                destinationAccountID: candidate.destinationAccountSuggestion,
-                paymentMethod: candidate.paymentMethod ?? .upi,
-                status: .cleared,
-                date: candidate.transactionDate,
-                tags: candidate.tags,
-                source: "sms"
-            )
+            let savedID = try await txnSvc.createTransaction(candidate)
             
             // Record fingerprint
             try? await fingerprintService?.recordFingerprint(
@@ -167,9 +153,27 @@ public final class SMSIngestionOrchestrator: Sendable {
                 source: "sms"
             )
             
-            return .saved(candidate: candidate, transactionID: savedRecord.id)
+            return .saved(candidate: candidate, transactionID: savedID)
+        } else if let txnSvc = transactionService {
+            // Persist as a durable review item in SwiftData
+            var reviewCandidate = candidate
+            reviewCandidate.needsReview = true
+            let savedID = try await txnSvc.createTransaction(reviewCandidate)
+            
+            // Record fingerprint to prevent duplicate re-import
+            try? await fingerprintService?.recordFingerprint(
+                sourceHash: sourceHash,
+                amount: candidate.amount,
+                merchant: candidate.merchantName,
+                accountLastFour: draft.accountSuggestion,
+                reference: candidate.sourceReference,
+                timestamp: candidate.transactionDate,
+                source: "sms"
+            )
+            
+            return .reviewRequired(candidate: reviewCandidate, warnings: confidenceEval.warnings)
         } else {
-            // Stage candidate for manual review
+            // Fallback for stateless evaluation
             return .reviewRequired(candidate: candidate, warnings: confidenceEval.warnings)
         }
     }
@@ -193,7 +197,7 @@ public final class SMSIngestionOrchestrator: Sendable {
             destinationAccountSuggestion: draft.type == .transfer ? "Savings Account" : nil,
             paymentMethod: draft.paymentMethod,
             transactionDate: draft.transactionDate,
-            notes: draft.rawText,
+            notes: nil, // GT-69 Fix: Zero raw bank SMS text stored in notes
             tags: [],
             source: .sms,
             sourceReference: draft.referenceNumber,

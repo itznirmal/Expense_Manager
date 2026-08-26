@@ -69,6 +69,7 @@ public struct VoiceEntryView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") {
+                        viewModel.stopListening()
                         dismiss()
                     }
                     .font(Typography.body)
@@ -98,6 +99,10 @@ public struct VoiceEntryView: View {
                 await viewModel.loadContext()
                 // Auto-start recording on appear
                 viewModel.startListening()
+            }
+            .onDisappear {
+                // Ensure audio recording lifecycle is cleanly terminated on modal dismissal
+                viewModel.stopListening()
             }
         }
     }
@@ -267,7 +272,7 @@ public struct VoiceEntryView: View {
                         Circle()
                             .fill(candidate.confidence.tier == .high ? ColorTokens.incomeAccent : (candidate.confidence.tier == .medium ? ColorTokens.warningAccent : ColorTokens.criticalAccent))
                             .frame(width: 8, height: 8)
-                        Text("\(candidate.confidence.tier.displayName) Confidence (\(Int(candidate.confidence.rawScore * 100))%)")
+                        Text("\(candidate.confidence.tier.displayName) Confidence (\(candidate.confidence.formattedPercentage))")
                             .font(Typography.caption2.weight(.semibold))
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
@@ -314,6 +319,7 @@ public struct VoiceEntryView: View {
                 }
                 
                 Button("Edit in Full Form") {
+                    viewModel.stopListening()
                     dismiss()
                     appState.presentSheet(.manualEntry)
                 }

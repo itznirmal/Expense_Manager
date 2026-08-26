@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Observation
+import LocalAuthentication
 
 /// Top-level application tabs.
 public enum AppTab: String, CaseIterable, Identifiable, Sendable {
@@ -87,12 +88,59 @@ public final class AppState {
     public var selectedTab: AppTab = .dashboard
     public var presentedSheet: AppSheet? = nil
     public var activeToast: ToastMessage? = nil
-    public var isBiometricallyLocked: Bool = false
     public var pendingReviewCount: Int = 0
+    
+    // Biometric Security (GT-66)
+    public var requireBiometrics: Bool {
+        didSet {
+            UserDefaults.standard.set(requireBiometrics, forKey: "requireBiometrics")
+            if requireBiometrics {
+                isBiometricallyLocked = true
+            } else {
+                isBiometricallyLocked = false
+            }
+        }
+    }
+    
+    public var isBiometricallyLocked: Bool
     
     private var toastDismissTask: Task<Void, Never>?
     
-    public init() {}
+    public init() {
+        let isBioRequired = UserDefaults.standard.bool(forKey: "requireBiometrics")
+        self.requireBiometrics = isBioRequired
+        self.isBiometricallyLocked = isBioRequired
+    }
+    
+    // MARK: - Biometric Actions (GT-66)
+    
+    public func lockApp() {
+        if requireBiometrics {
+            self.isBiometricallyLocked = true
+        }
+    }
+    
+    public func authenticateBiometrics() {
+        let context = LAContext()
+        var error: NSError?
+        
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) ||
+              context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            // If biometrics/passcode not configured, unlock fail-safe
+            self.isBiometricallyLocked = false
+            return
+        }
+        
+        let reason = "Unlock Expense Manager to access your financial records."
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { [weak self] success, _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if success {
+                    self.isBiometricallyLocked = false
+                }
+            }
+        }
+    }
     
     // MARK: - Toast Handling
     

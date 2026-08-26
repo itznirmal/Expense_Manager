@@ -31,7 +31,7 @@ public final class SMSDiagnosticsViewModel {
     public var isDuplicate: Bool = false
     public var duplicateReason: String? = nil
     public var confidenceScore: Double = 0.0
-    public var confidenceTier: ConfidenceTier = .low
+    public var confidenceTier: ConfidenceScore.Tier = .low
     public var diagnosticWarnings: [String] = []
     public var isProcessing: Bool = false
     public var selectedSample: SampleSMSTemplate? = nil
@@ -207,7 +207,7 @@ public final class SMSDiagnosticsViewModel {
             )
             
             let eval = ConfidenceEngine.evaluate(draft: draft, source: .sms, hasMatchedRule: false)
-            self.confidenceScore = eval.score.rawScore
+            self.confidenceScore = eval.score.value
             self.confidenceTier = eval.score.tier
             self.diagnosticWarnings = eval.warnings
         } else {

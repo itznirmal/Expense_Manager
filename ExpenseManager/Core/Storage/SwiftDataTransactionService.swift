@@ -13,6 +13,7 @@ import SwiftData
 public enum TransactionServiceError: LocalizedError, Sendable {
     case transactionNotFound(id: String)
     case contextSaveFailed(String)
+    case transferMissingDestination
     
     public var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ public enum TransactionServiceError: LocalizedError, Sendable {
             return "Transaction with identifier '\(id)' was not found."
         case .contextSaveFailed(let message):
             return "Failed to save transaction data: \(message)"
+        case .transferMissingDestination:
+            return "Transfers require a valid and distinct destination account."
         }
     }
 }
@@ -108,7 +111,15 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
         
         modelContext.insert(record)
-        try modelContext.save()
+        
+        do {
+            try modelContext.save()
+        } catch {
+            // Rollback balance modification if save fails
+            rollbackBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+            modelContext.delete(record)
+            throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
+        }
         
         return record.id
     }
@@ -119,9 +130,13 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         }
         
         let normalizedAmount = abs(candidate.amount)
+        let oldType = record.transactionType
+        let oldAmount = record.amount
+        let oldAccount = record.account
+        let oldDestAccount = record.destinationAccount
         
         // 1. Roll back old balance effect
-        rollbackBalanceEffect(for: record.transactionType, amount: record.amount, account: record.account, destinationAccount: record.destinationAccount)
+        rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
         
         // 2. Resolve new relationships
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
@@ -148,7 +163,14 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         // 4. Apply new balance effect
         applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
         
-        try modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            // Rollback to old balance state if save fails
+            rollbackBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+            applyBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+            throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
+        }
     }
     
     public func deleteTransaction(id: String) async throws {
@@ -156,11 +178,23 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             throw TransactionServiceError.transactionNotFound(id: id)
         }
         
+        let oldType = record.transactionType
+        let oldAmount = record.amount
+        let oldAccount = record.account
+        let oldDestAccount = record.destinationAccount
+        
         // Roll back balance effect prior to deletion
-        rollbackBalanceEffect(for: record.transactionType, amount: record.amount, account: record.account, destinationAccount: record.destinationAccount)
+        rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
         
         modelContext.delete(record)
-        try modelContext.save()
+        
+        do {
+            try modelContext.save()
+        } catch {
+            // Reapply balance effect if delete fails
+            applyBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+            throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
+        }
     }
     
     public func calculateTotals(startDate: Date, endDate: Date) async throws -> (income: Decimal, expense: Decimal) {
@@ -239,18 +273,65 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     }
     
     private func resolveAccount(for identifierOrName: String?) throws -> AccountRecord? {
-        guard let identifierOrName = identifierOrName, !identifierOrName.isEmpty else { return nil }
+        guard let identifierOrName = identifierOrName?.trimmingCharacters(in: .whitespacesAndNewlines), !identifierOrName.isEmpty else { return nil }
         
         let descriptor = FetchDescriptor<AccountRecord>()
         let accounts = try modelContext.fetch(descriptor)
-        return accounts.first { $0.id == identifierOrName || $0.name.localizedCaseInsensitiveCompare(identifierOrName) == .orderedSame }
+        
+        // 1. Direct ID match
+        if let directIDMatch = accounts.first(where: { $0.id == identifierOrName }) {
+            return directIDMatch
+        }
+        
+        // 2. Exact name match
+        if let exactNameMatch = accounts.first(where: { $0.name.localizedCaseInsensitiveCompare(identifierOrName) == .orderedSame }) {
+            return exactNameMatch
+        }
+        
+        // 3. Last 4 digits match (e.g. "HDFC Bank •••• 8432" or "8432")
+        let digits = identifierOrName.filter { $0.isNumber }
+        if digits.count >= 4 {
+            let lastFour = String(digits.suffix(4))
+            if let lastFourMatch = accounts.first(where: { $0.lastFour == lastFour }) {
+                return lastFourMatch
+            }
+        }
+        
+        // 4. Substring / fuzzy match
+        if let fuzzyMatch = accounts.first(where: {
+            $0.name.localizedCaseInsensitiveContains(identifierOrName) ||
+            identifierOrName.localizedCaseInsensitiveContains($0.name)
+        }) {
+            return fuzzyMatch
+        }
+        
+        return nil
     }
     
     private func resolveCategory(for identifierOrName: String?) throws -> CategoryRecord? {
-        guard let identifierOrName = identifierOrName, !identifierOrName.isEmpty else { return nil }
+        guard let identifierOrName = identifierOrName?.trimmingCharacters(in: .whitespacesAndNewlines), !identifierOrName.isEmpty else { return nil }
         
         let descriptor = FetchDescriptor<CategoryRecord>()
         let categories = try modelContext.fetch(descriptor)
-        return categories.first { $0.id == identifierOrName || $0.name.localizedCaseInsensitiveCompare(identifierOrName) == .orderedSame }
+        
+        // 1. Direct ID match
+        if let directIDMatch = categories.first(where: { $0.id == identifierOrName }) {
+            return directIDMatch
+        }
+        
+        // 2. Exact name match
+        if let exactNameMatch = categories.first(where: { $0.name.localizedCaseInsensitiveCompare(identifierOrName) == .orderedSame }) {
+            return exactNameMatch
+        }
+        
+        // 3. Substring match
+        if let fuzzyMatch = categories.first(where: {
+            $0.name.localizedCaseInsensitiveContains(identifierOrName) ||
+            identifierOrName.localizedCaseInsensitiveContains($0.name)
+        }) {
+            return fuzzyMatch
+        }
+        
+        return nil
     }
 }

@@ -8,19 +8,23 @@
 
 import Foundation
 
-// MARK: - CSV Formula Injection Sanitizer (AC-SEC-1)
+// MARK: - CSV Formula Injection Sanitizer (AC-SEC-1 / GT-58)
 
 /// Sanitizer protecting against CSV Formula Injection (CWE-1236 / AC-SEC-1).
-/// Prefixes any text field beginning with `=`, `+`, `-`, `@`, `\t`, `\r` with a single quote `'`
-/// to neutralize formula execution in Microsoft Excel, Apple Numbers, and Google Sheets.
+/// Prefixes any text field beginning with `=`, `+`, `-`, `@`, `\t`, `\r` (even if padded with leading whitespace)
+/// with a single quote `'` to neutralize formula execution in Microsoft Excel, Apple Numbers, and Google Sheets.
 public enum CSVFormulaSanitizer {
     /// Dangerous characters that can trigger formula evaluation in spreadsheet software.
     public static let formulaTriggers: [Character] = ["=", "+", "-", "@", "\t", "\r"]
     
-    /// Neutralizes formula execution by prepending a single quote `'` if the string starts with a trigger character.
+    /// Neutralizes formula execution by prepending a single quote `'` if the string or trimmed string starts with a trigger character.
     public static func neutralize(_ input: String) -> String {
         guard let firstChar = input.first else { return input }
         if formulaTriggers.contains(firstChar) {
+            return "'" + input
+        }
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedFirst = trimmed.first, formulaTriggers.contains(trimmedFirst) {
             return "'" + input
         }
         return input
@@ -201,6 +205,41 @@ public struct MerchantRuleBackupDTO: Codable, Sendable, Equatable {
     }
 }
 
+/// Import Fingerprint backup payload representation (GT-68).
+public struct ImportFingerprintBackupDTO: Codable, Sendable, Equatable {
+    public let id: String
+    public let sourceHash: String
+    public let amount: Decimal
+    public let normalizedMerchant: String
+    public let accountLastFour: String?
+    public let transactionReference: String?
+    public let approximateTimestamp: Date
+    public let source: String
+    public let createdAt: Date
+    
+    public init(
+        id: String,
+        sourceHash: String,
+        amount: Decimal,
+        normalizedMerchant: String,
+        accountLastFour: String?,
+        transactionReference: String?,
+        approximateTimestamp: Date,
+        source: String,
+        createdAt: Date
+    ) {
+        self.id = id
+        self.sourceHash = sourceHash
+        self.amount = amount
+        self.normalizedMerchant = normalizedMerchant
+        self.accountLastFour = accountLastFour
+        self.transactionReference = transactionReference
+        self.approximateTimestamp = approximateTimestamp
+        self.source = source
+        self.createdAt = createdAt
+    }
+}
+
 /// Transaction backup payload representation.
 public struct TransactionBackupDTO: Codable, Sendable, Equatable {
     public let id: String
@@ -268,6 +307,7 @@ public struct BackupData: Codable, Sendable, Equatable {
     public let transactions: [TransactionBackupDTO]
     public let budgets: [BudgetBackupDTO]
     public let merchantRules: [MerchantRuleBackupDTO]
+    public let importFingerprints: [ImportFingerprintBackupDTO]
     
     public init(
         accounts: [AccountBackupDTO] = [],
@@ -275,7 +315,8 @@ public struct BackupData: Codable, Sendable, Equatable {
         tags: [TagBackupDTO] = [],
         transactions: [TransactionBackupDTO] = [],
         budgets: [BudgetBackupDTO] = [],
-        merchantRules: [MerchantRuleBackupDTO] = []
+        merchantRules: [MerchantRuleBackupDTO] = [],
+        importFingerprints: [ImportFingerprintBackupDTO] = []
     ) {
         self.accounts = accounts
         self.categories = categories
@@ -283,6 +324,7 @@ public struct BackupData: Codable, Sendable, Equatable {
         self.transactions = transactions
         self.budgets = budgets
         self.merchantRules = merchantRules
+        self.importFingerprints = importFingerprints
     }
 }
 
@@ -317,6 +359,7 @@ public struct BackupRestoreResult: Sendable, Equatable {
     public let transactionsRestored: Int
     public let budgetsRestored: Int
     public let rulesRestored: Int
+    public let fingerprintsRestored: Int
     
     public init(
         accountsRestored: Int,
@@ -324,7 +367,8 @@ public struct BackupRestoreResult: Sendable, Equatable {
         tagsRestored: Int,
         transactionsRestored: Int,
         budgetsRestored: Int,
-        rulesRestored: Int
+        rulesRestored: Int,
+        fingerprintsRestored: Int = 0
     ) {
         self.accountsRestored = accountsRestored
         self.categoriesRestored = categoriesRestored
@@ -332,10 +376,11 @@ public struct BackupRestoreResult: Sendable, Equatable {
         self.transactionsRestored = transactionsRestored
         self.budgetsRestored = budgetsRestored
         self.rulesRestored = rulesRestored
+        self.fingerprintsRestored = fingerprintsRestored
     }
     
     public var totalRecordsRestored: Int {
-        accountsRestored + categoriesRestored + tagsRestored + transactionsRestored + budgetsRestored + rulesRestored
+        accountsRestored + categoriesRestored + tagsRestored + transactionsRestored + budgetsRestored + rulesRestored + fingerprintsRestored
     }
 }
 

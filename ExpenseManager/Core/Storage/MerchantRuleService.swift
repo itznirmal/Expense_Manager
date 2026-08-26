@@ -21,8 +21,36 @@ public protocol MerchantRuleServiceProtocol: Sendable {
         pattern: String,
         confidence: Double
     ) async throws -> String
+    
+    @discardableResult
+    func learnRule(
+        merchantPattern: String,
+        categoryID: String?,
+        accountID: String?,
+        confidence: Double
+    ) async throws -> String
+    
     func fetchRules() async throws -> [MerchantRuleRecord]
     func deleteRule(id: String) async throws
+}
+
+public extension MerchantRuleServiceProtocol {
+    @discardableResult
+    func learnRule(
+        merchantPattern: String,
+        categoryID: String?,
+        accountID: String?,
+        confidence: Double = 0.95
+    ) async throws -> String {
+        try await saveRule(
+            merchant: merchantPattern,
+            categoryID: categoryID,
+            accountID: accountID,
+            tags: [],
+            pattern: merchantPattern,
+            confidence: confidence
+        )
+    }
 }
 
 /// SwiftData persistent implementation of the Merchant Rule Service.

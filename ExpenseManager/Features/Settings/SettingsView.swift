@@ -38,7 +38,10 @@ public struct SettingsView: View {
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
                     
-                    Toggle(isOn: $bindableVM.requireBiometrics) {
+                    Toggle(isOn: Binding(
+                        get: { appState.requireBiometrics },
+                        set: { vm.toggleBiometrics(enable: $0, appState: appState) }
+                    )) {
                         Label("Face ID / Passcode", systemImage: "faceid")
                     }
                     
@@ -182,9 +185,9 @@ public struct SettingsView: View {
                             Label("Factory Reset / Purge Data", systemImage: "trash.fill")
                             Spacer()
                             if vm.isPurgingData {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
                         }
                     }
                 }

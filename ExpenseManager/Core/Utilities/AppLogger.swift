@@ -36,8 +36,59 @@ public enum AppLogger: Sendable {
     /// SwiftData persistence, migrations, and model context events
     public static let storage = Logger(subsystem: subsystem, category: "storage")
     
+    /// Storage database alias
+    public static let database = storage
+    
     /// Biometrics, App Lock, and export sanitization security events
     public static let security = Logger(subsystem: subsystem, category: "security")
+    
+    // MARK: - Shared Facade
+    
+    public struct LoggerFacade: Sendable {
+        public func info(_ message: String) {
+            AppLogger.general.info("\(message, privacy: .public)")
+        }
+        
+        public func error(_ message: String) {
+            AppLogger.general.error("\(message, privacy: .public)")
+        }
+        
+        public func debug(_ message: String) {
+            AppLogger.general.debug("\(message, privacy: .public)")
+        }
+        
+        public func warning(_ message: String) {
+            AppLogger.general.warning("\(message, privacy: .public)")
+        }
+        
+        public func fault(_ message: String) {
+            AppLogger.general.fault("\(message, privacy: .public)")
+        }
+    }
+    
+    public static let shared = LoggerFacade()
+    
+    // MARK: - Static Convenience Logging
+    
+    public static func info(_ message: String) {
+        general.info("\(message, privacy: .public)")
+    }
+    
+    public static func error(_ message: String, error: (any Error)? = nil) {
+        if let error = error {
+            general.error("\(message, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        } else {
+            general.error("\(message, privacy: .public)")
+        }
+    }
+    
+    public static func debug(_ message: String) {
+        general.debug("\(message, privacy: .public)")
+    }
+    
+    public static func warning(_ message: String) {
+        general.warning("\(message, privacy: .public)")
+    }
     
     // MARK: - Privacy & Redaction Helpers
     

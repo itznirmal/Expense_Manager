@@ -3,7 +3,7 @@
 //  ExpenseManager
 //
 //  Created for Expense Manager iOS.
-//  Root Tab Navigation Shell with Toast & Sheet Coordinator.
+//  Root Tab Navigation Shell with Toast, Sheet & Biometric Lock Coordinator.
 //
 
 import SwiftUI
@@ -11,6 +11,7 @@ import SwiftUI
 public struct RootView: View {
     @Environment(\.appState) private var appState
     @Environment(\.dependencyContainer) private var container
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = RootViewModel()
     
     public init() {}
@@ -19,44 +20,24 @@ public struct RootView: View {
         @Bindable var state = appState
         
         ZStack(alignment: .top) {
-            TabView(selection: $state.selectedTab) {
-                DashboardView()
-                    .tabItem {
-                        Label(AppTab.dashboard.title, systemImage: AppTab.dashboard.iconName)
-                    }
-                    .tag(AppTab.dashboard)
-                
-                TransactionsListView()
-                    .tabItem {
-                        Label(AppTab.transactions.title, systemImage: AppTab.transactions.iconName)
-                    }
-                    .tag(AppTab.transactions)
-                
-                BudgetsOverviewView()
-                    .tabItem {
-                        Label(AppTab.budgets.title, systemImage: AppTab.budgets.iconName)
-                    }
-                    .tag(AppTab.budgets)
-                
-                AnalyticsOverviewView()
-                    .tabItem {
-                        Label(AppTab.analytics.title, systemImage: AppTab.analytics.iconName)
-                    }
-                    .tag(AppTab.analytics)
-                
-                SettingsView()
-                    .tabItem {
-                        Label(AppTab.settings.title, systemImage: AppTab.settings.iconName)
-                    }
-                    .tag(AppTab.settings)
+            if appState.requireBiometrics && appState.isBiometricallyLocked {
+                BiometricLockView()
+                    .transition(.opacity)
+                    .zIndex(200)
+            } else {
+                mainTabContent(state: state)
             }
-            .tint(ColorTokens.brandPrimary)
             
             // Toast Banner Overlay
             if let toast = appState.activeToast {
                 toastBanner(toast)
                     .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(100)
+                    .zIndex(300)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                appState.lockApp()
             }
         }
         // Sheet Presentations
@@ -87,11 +68,49 @@ public struct RootView: View {
             case .transactionDetail(let tx):
                 TransactionDetailView(transaction: tx)
             case .transactionFilter:
-                Text("Transaction Filter")
+                TransactionFilterSheetView(viewModel: TransactionsListViewModel())
             case .transactionBatchCategorize:
                 Text("Batch Categorize")
             }
         }
+    }
+    
+    // MARK: - Main Tab Content
+    
+    private func mainTabContent(state: AppState) -> some View {
+        @Bindable var bindableState = state
+        return TabView(selection: $bindableState.selectedTab) {
+            DashboardView()
+                .tabItem {
+                    Label(AppTab.dashboard.title, systemImage: AppTab.dashboard.iconName)
+                }
+                .tag(AppTab.dashboard)
+            
+            TransactionsListView()
+                .tabItem {
+                    Label(AppTab.transactions.title, systemImage: AppTab.transactions.iconName)
+                }
+                .tag(AppTab.transactions)
+            
+            BudgetsOverviewView()
+                .tabItem {
+                    Label(AppTab.budgets.title, systemImage: AppTab.budgets.iconName)
+                }
+                .tag(AppTab.budgets)
+            
+            AnalyticsOverviewView()
+                .tabItem {
+                    Label(AppTab.analytics.title, systemImage: AppTab.analytics.iconName)
+                }
+                .tag(AppTab.analytics)
+            
+            SettingsView()
+                .tabItem {
+                    Label(AppTab.settings.title, systemImage: AppTab.settings.iconName)
+                }
+                .tag(AppTab.settings)
+        }
+        .tint(ColorTokens.brandPrimary)
     }
     
     // MARK: - Toast Banner View

@@ -40,6 +40,10 @@ public final class DatabaseContainer: @unchecked Sendable {
     
     public let container: ModelContainer
     
+    public var modelContainer: ModelContainer {
+        container
+    }
+    
     @MainActor
     public var mainContext: ModelContext {
         container.mainContext

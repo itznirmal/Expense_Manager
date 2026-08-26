@@ -58,6 +58,9 @@ public final class MockDataExportService: DataExportServiceProtocol, @unchecked 
             ],
             merchantRules: [
                 MerchantRuleBackupDTO(id: "rule_1", normalizedMerchant: "swiggy", preferredCategoryID: "cat_1", preferredAccountID: "acc_1", preferredTags: ["food"], matchPattern: "swiggy", confidence: 0.95, createdAt: Date(), updatedAt: Date())
+            ],
+            importFingerprints: [
+                ImportFingerprintBackupDTO(id: "fp_1", sourceHash: "HASH123", amount: 1450, normalizedMerchant: "swiggy", accountLastFour: "1234", transactionReference: "UPI-123", approximateTimestamp: Date(), source: "sms", createdAt: Date())
             ]
         )
         
@@ -100,7 +103,8 @@ public final class MockDataExportService: DataExportServiceProtocol, @unchecked 
             tagsRestored: payload.data.tags.count,
             transactionsRestored: payload.data.transactions.count,
             budgetsRestored: payload.data.budgets.count,
-            rulesRestored: payload.data.merchantRules.count
+            rulesRestored: payload.data.merchantRules.count,
+            fingerprintsRestored: payload.data.importFingerprints.count
         )
         self.lastRestoreResult = result
         return result

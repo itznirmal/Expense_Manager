@@ -109,8 +109,8 @@ public struct DateParser: Sendable {
             }
         }
         
-        // 3. Match Day Month [Year] (e.g. "25 Aug", "25th August", "25 August 2026", "Aug 25", "August 25, 2026")
-        let dayMonthPattern = "(?i)\\b([0-3]?[0-9])(?:st|nd|rd|th)?\\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\\s+([0-9]{4}))?\\b"
+        // 3. Match Day Month [Year] with optional '-', '/', or space (e.g. "25-AUG-26", "25-Aug-26", "25Aug26", "25 August 2026")
+        let dayMonthPattern = "(?i)\\b([0-3]?[0-9])(?:st|nd|rd|th)?(?:\\s*[-/]?\\s*)(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\\s*[-/]?\\s*([0-9]{2,4}))?\\b"
         if let regex = try? NSRegularExpression(pattern: dayMonthPattern, options: []),
            let match = regex.firstMatch(in: normalized, options: [], range: nsRange),
            match.numberOfRanges >= 3,
@@ -126,7 +126,11 @@ public struct DateParser: Sendable {
             if match.numberOfRanges >= 4, match.range(at: 3).location != NSNotFound,
                let yearRange = Range(match.range(at: 3), in: normalized),
                let explicitYear = Int(normalized[yearRange]) {
-                year = explicitYear
+                if explicitYear < 100 {
+                    year = 2000 + explicitYear
+                } else {
+                    year = explicitYear
+                }
             }
             
             var components = DateComponents()
@@ -144,8 +148,8 @@ public struct DateParser: Sendable {
             }
         }
         
-        // 4. Match Month Day [Year] (e.g. "Aug 25", "August 25 2026")
-        let monthDayPattern = "(?i)\\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\s+([0-3]?[0-9])(?:st|nd|rd|th)?(?:,?\\s+([0-9]{4}))?\\b"
+        // 4. Match Month Day [Year] (e.g. "Aug 25", "August 25 2026", "Aug-25-2026")
+        let monthDayPattern = "(?i)\\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\\s*[-/]?\\s*)([0-3]?[0-9])(?:st|nd|rd|th)?(?:,?\\s*[-/]?\\s*([0-9]{2,4}))?\\b"
         if let regex = try? NSRegularExpression(pattern: monthDayPattern, options: []),
            let match = regex.firstMatch(in: normalized, options: [], range: nsRange),
            match.numberOfRanges >= 3,
@@ -161,7 +165,11 @@ public struct DateParser: Sendable {
             if match.numberOfRanges >= 4, match.range(at: 3).location != NSNotFound,
                let yearRange = Range(match.range(at: 3), in: normalized),
                let explicitYear = Int(normalized[yearRange]) {
-                year = explicitYear
+                if explicitYear < 100 {
+                    year = 2000 + explicitYear
+                } else {
+                    year = explicitYear
+                }
             }
             
             var components = DateComponents()

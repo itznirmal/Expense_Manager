@@ -83,7 +83,7 @@ public struct BankSMSParser: Sendable {
         
         // 5. Extract Account Mask / Card Ending
         let accountData = AccountHintParser.extractAccountHint(from: cleaned)
-        let accountMask = accountData?.accountLastFour
+        let accountMask = accountData?.lastFour
         var paymentMethod = accountData?.paymentMethod
         
         // 6. Extract Reference & UPI VPA

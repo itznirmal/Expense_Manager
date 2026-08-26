@@ -80,11 +80,16 @@ public struct TransactionDetailView: View {
             ) {
                 Button("Delete Transaction", role: .destructive) {
                     Task {
-                        try? await container.transactionService.deleteTransaction(id: transaction.id.uuidString)
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        appState.showToast(title: "Transaction Deleted", type: .info)
-                        onDelete?(transaction.id.uuidString)
-                        dismiss()
+                        do {
+                            try await container.transactionService.deleteTransaction(id: transaction.id.uuidString)
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            appState.showToast(title: "Transaction Deleted", type: .info)
+                            onDelete?(transaction.id.uuidString)
+                            dismiss()
+                        } catch {
+                            UINotificationFeedbackGenerator().notificationOccurred(.error)
+                            appState.showToast(title: "Delete Failed", message: error.localizedDescription, type: .error)
+                        }
                     }
                 }
                 Button("Cancel", role: .cancel) {}
@@ -216,7 +221,7 @@ public struct TransactionDetailView: View {
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
                     Spacer()
-                    Text("\(Int(transaction.confidence.value * 100))% (\(transaction.confidence.tier.displayName))")
+                    Text("\(transaction.confidence.formattedPercentage) (\(transaction.confidence.tier.displayName))")
                         .font(Typography.subheadline.weight(.semibold))
                         .foregroundStyle(ColorTokens.textPrimary)
                 }

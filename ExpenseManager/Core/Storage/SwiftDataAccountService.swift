@@ -92,6 +92,8 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
         record.name = account.name
         record.accountType = account.type
         record.currencyCode = account.currencyCode
+        record.currentBalance = account.balance
+        record.openingBalance = account.balance
         record.icon = account.icon
         record.colorToken = account.colorToken
         record.lastFour = account.lastFour
@@ -109,15 +111,41 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
         try modelContext.save()
     }
     
+    /// Calculates the net total balance across active accounts in base currency, grouping or filtering by default currency to prevent cross-currency blind summation (GT-67).
     public func calculateNetWorth() async throws -> Decimal {
         let descriptor = FetchDescriptor<AccountRecord>()
         let records = try modelContext.fetch(descriptor)
         
-        return records
-            .filter { !$0.isArchived }
-            .reduce(Decimal.zero) { sum, account in
-                sum + account.currentBalance
-            }
+        let activeRecords = records.filter { !$0.isArchived }
+        
+        // Group balances by currency to prevent cross-currency blind summation
+        var balancesByCurrency: [String: Decimal] = [:]
+        for account in activeRecords {
+            let code = account.currencyCode
+            balancesByCurrency[code, default: .zero] += account.currentBalance
+        }
+        
+        // Primary net worth calculation for the default/base currency
+        let defaultCode = CurrencyFormatter.defaultCurrencyCode
+        if let primaryNetWorth = balancesByCurrency[defaultCode] {
+            return primaryNetWorth
+        } else if let firstEntry = balancesByCurrency.first {
+            return firstEntry.value
+        }
+        
+        return .zero
+    }
+    
+    /// Calculates net worth grouped per currency code.
+    public func calculateNetWorthByCurrency() async throws -> [String: Decimal] {
+        let descriptor = FetchDescriptor<AccountRecord>()
+        let records = try modelContext.fetch(descriptor)
+        
+        var netWorthMap: [String: Decimal] = [:]
+        for account in records where !account.isArchived {
+            netWorthMap[account.currencyCode, default: .zero] += account.currentBalance
+        }
+        return netWorthMap
     }
     
     // MARK: - Private Helpers

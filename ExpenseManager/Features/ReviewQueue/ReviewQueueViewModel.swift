@@ -54,6 +54,7 @@ public final class ReviewQueueViewModel {
     
     public func loadQueue(container: DependencyContainer) async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         
         do {
@@ -81,7 +82,13 @@ public final class ReviewQueueViewModel {
         accepted.needsReview = false
         
         do {
-            try await container.transactionService.createTransaction(accepted)
+            // Check if transaction exists in storage, update it, or create if new
+            do {
+                try await container.transactionService.updateTransaction(id: candidate.id.uuidString, candidate: accepted)
+            } catch {
+                try await container.transactionService.createTransaction(accepted)
+            }
+            
             queuedCandidates.removeAll { $0.id == candidate.id }
             appState.pendingReviewCount = queuedCandidates.count
             
@@ -104,7 +111,10 @@ public final class ReviewQueueViewModel {
         }
     }
     
-    public func discardCandidate(_ candidate: TransactionCandidate, appState: AppState) {
+    public func discardCandidate(_ candidate: TransactionCandidate, container: DependencyContainer? = nil, appState: AppState) async {
+        if let container = container {
+            try? await container.transactionService.deleteTransaction(id: candidate.id.uuidString)
+        }
         queuedCandidates.removeAll { $0.id == candidate.id }
         appState.pendingReviewCount = queuedCandidates.count
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -131,7 +141,7 @@ public final class ReviewQueueViewModel {
                 accountSuggestion: nil,
                 paymentMethod: .creditCard,
                 transactionDate: Date().addingTimeInterval(-3600 * 4),
-                notes: "UPI/482019283741 AMZN MKTP IN paid",
+                notes: nil,
                 source: .sms,
                 confidence: ConfidenceScore(0.72),
                 needsReview: true,
@@ -147,7 +157,7 @@ public final class ReviewQueueViewModel {
                 accountSuggestion: "HDFC Bank",
                 paymentMethod: .upi,
                 transactionDate: Date().addingTimeInterval(-3600 * 18),
-                notes: "Paid to chaipoi@okhdfcbank",
+                notes: nil,
                 source: .sms,
                 confidence: ConfidenceScore(0.68),
                 needsReview: true,

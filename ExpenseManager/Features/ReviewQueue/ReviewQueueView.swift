@@ -185,7 +185,9 @@ public struct ReviewQueueView: View {
                 // Action Buttons: Accept, Edit, Discard
                 HStack(spacing: 10) {
                     Button(action: {
-                        viewModel.discardCandidate(candidate, appState: appState)
+                        Task {
+                            await viewModel.discardCandidate(candidate, container: container, appState: appState)
+                        }
                     }) {
                         Text("Discard")
                             .font(Typography.subheadline.weight(.medium))

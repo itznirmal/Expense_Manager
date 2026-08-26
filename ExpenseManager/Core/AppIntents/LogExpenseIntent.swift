@@ -59,85 +59,56 @@ public struct LogExpenseIntent: AppIntent {
             return .result(dialog: "Please provide a valid merchant name.")
         }
         
-        // Exact financial conversion
-        let exactAmount = Decimal(string: String(format: "%.2f", amount)) ?? Decimal(amount)
+        // Exact decimal conversion without precision loss
+        let exactAmount = Decimal(string: "\(amount)") ?? Decimal(amount)
         
-        let container = DatabaseContainer.shared.modelContainer
-        let context = container.mainContext
+        let container = DatabaseContainer.shared.container
+        let txnService = SwiftDataTransactionService(modelContainer: container)
+        let fingerprintService = ImportFingerprintService(modelContainer: container)
         
-        // Find or infer account
-        var matchedAccount: AccountRecord? = nil
-        let accountDescriptor = FetchDescriptor<AccountRecord>()
-        if let allAccounts = try? context.fetch(accountDescriptor) {
-            if let accountName = account, !accountName.isEmpty {
-                matchedAccount = allAccounts.first { $0.name.localizedCaseInsensitiveContains(accountName) }
-            }
-            if matchedAccount == nil {
-                matchedAccount = allAccounts.first { $0.isDefault } ?? allAccounts.first
-            }
-        }
-        
-        // Find or infer category
-        var matchedCategory: CategoryRecord? = nil
-        let categoryDescriptor = FetchDescriptor<CategoryRecord>()
-        if let allCategories = try? context.fetch(categoryDescriptor) {
-            if let categoryName = category, !categoryName.isEmpty {
-                matchedCategory = allCategories.first { $0.name.localizedCaseInsensitiveContains(categoryName) }
-            }
-        }
-        
-        // Create Transaction Record
-        let transactionID = UUID().uuidString
-        let transaction = TransactionRecord(
-            id: transactionID,
+        let candidate = TransactionCandidate(
+            id: UUID(),
+            type: .expense,
             amount: exactAmount,
             currencyCode: CurrencyFormatter.defaultCurrencyCode,
-            typeRawValue: TransactionType.expense.rawValue,
-            merchant: trimmedMerchant,
-            notes: notes ?? "Logged via Siri / Shortcuts",
-            category: matchedCategory,
-            account: matchedAccount,
-            destinationAccount: nil,
-            paymentMethodRawValue: PaymentMethod.upi.rawValue,
-            statusRawValue: TransactionStatus.cleared.rawValue,
+            merchantName: trimmedMerchant,
+            categorySuggestion: category?.trimmingCharacters(in: .whitespacesAndNewlines),
+            accountSuggestion: account?.trimmingCharacters(in: .whitespacesAndNewlines),
+            paymentMethod: .upi,
             transactionDate: Date(),
-            source: "siri_intent",
-            sourceReference: nil,
-            createdAt: Date(),
-            updatedAt: Date()
+            notes: notes ?? "Logged via Siri / Shortcuts",
+            tags: [],
+            source: .siri,
+            confidence: .high,
+            needsReview: false,
+            warnings: []
         )
         
-        context.insert(transaction)
-        
-        // Update account balance (Debit for expense)
-        if let acc = matchedAccount {
-            acc.currentBalance -= exactAmount
-            acc.updatedAt = Date()
+        do {
+            let txID = try await txnService.createTransaction(candidate)
+            
+            // Record duplicate prevention fingerprint
+            let sourceHash = ImportFingerprintService.computeSourceHash(
+                amount: exactAmount,
+                merchant: trimmedMerchant,
+                timestamp: candidate.transactionDate,
+                reference: txID
+            )
+            
+            try? await fingerprintService.recordFingerprint(
+                sourceHash: sourceHash,
+                amount: exactAmount,
+                merchant: trimmedMerchant,
+                accountLastFour: account,
+                reference: txID,
+                timestamp: candidate.transactionDate,
+                source: "siri_intent"
+            )
+            
+            let formatted = CurrencyFormatter.shared.format(amount: exactAmount)
+            return .result(dialog: "Logged \(formatted) at \(trimmedMerchant).")
+        } catch {
+            return .result(dialog: "Failed to log expense: \(error.localizedDescription)")
         }
-        
-        // Record duplicate fingerprint
-        let fingerprintHash = ImportFingerprintService.computeSourceHash(
-            amount: exactAmount,
-            merchant: trimmedMerchant,
-            timestamp: transaction.transactionDate,
-            reference: transactionID
-        )
-        let fingerprint = ImportFingerprintRecord(
-            id: UUID().uuidString,
-            sourceHash: fingerprintHash,
-            amount: exactAmount,
-            normalizedMerchant: trimmedMerchant,
-            accountLastFour: matchedAccount?.accountNumberMask,
-            transactionReference: transactionID,
-            approximateTimestamp: transaction.transactionDate,
-            source: "app_intent",
-            createdAt: Date()
-        )
-        context.insert(fingerprint)
-        
-        try? context.save()
-        
-        let formatted = CurrencyFormatter.shared.format(amount: exactAmount)
-        return .result(dialog: "Logged \(formatted) at \(trimmedMerchant).")
     }
 }

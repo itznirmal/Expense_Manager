@@ -12,6 +12,7 @@ import Foundation
 public struct ExtractedAccountHint: Equatable, Sendable {
     public let bankName: String?
     public let lastFour: String?
+    public var accountLastFour: String? { lastFour }
     public let accountSuggestion: String?
     public let paymentMethod: PaymentMethod?
     public let matchedString: String

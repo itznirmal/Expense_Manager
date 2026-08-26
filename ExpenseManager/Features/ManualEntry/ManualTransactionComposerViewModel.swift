@@ -36,7 +36,7 @@ public final class ManualTransactionComposerViewModel {
     public var isLoading: Bool = false
     public var validationError: String? = nil
     
-    private let editingCandidateId: UUID?
+    public let editingCandidateId: UUID?
     
     // MARK: - Computed Properties
     
@@ -59,8 +59,12 @@ public final class ManualTransactionComposerViewModel {
         type == .transfer
     }
     
+    public var isCashWithdrawal: Bool {
+        type == .cashWithdrawal
+    }
+    
     public var canSave: Bool {
-        amount > .zero && (!merchantName.trimmingCharacters(in: .whitespaces).isEmpty || selectedCategoryID != nil)
+        amount > .zero && (!merchantName.trimmingCharacters(in: .whitespaces).isEmpty || selectedCategoryID != nil || isTransfer || isCashWithdrawal)
     }
     
     // MARK: - Initializer
@@ -106,7 +110,7 @@ public final class ManualTransactionComposerViewModel {
             
             // Set default destination account for transfers
             if self.selectedDestinationAccountID == nil && accounts.count > 1 {
-                self.selectedDestinationAccountID = accounts.last?.id
+                self.selectedDestinationAccountID = accounts.first(where: { $0.id != self.selectedAccountID })?.id ?? accounts.last?.id
             }
             
             // Set default category if none selected
@@ -161,6 +165,18 @@ public final class ManualTransactionComposerViewModel {
             return false
         }
         
+        // Strict Transfer Validation: Requires distinct source and destination accounts
+        if isTransfer {
+            guard let src = selectedAccountID, let dst = selectedDestinationAccountID, !src.isEmpty, !dst.isEmpty else {
+                validationError = "Transfers require both a source and destination account."
+                return false
+            }
+            if src == dst {
+                validationError = "Source and destination accounts must be different for a transfer."
+                return false
+            }
+        }
+        
         isSaving = true
         validationError = nil
         defer { isSaving = false }
@@ -168,18 +184,38 @@ public final class ManualTransactionComposerViewModel {
         // Resolve category & account names
         let categoryName = availableCategories.first(where: { $0.id == selectedCategoryID })?.name ?? selectedCategoryID
         let accountName = availableAccounts.first(where: { $0.id == selectedAccountID })?.name ?? selectedAccountID
-        let destinationAccountName = availableAccounts.first(where: { $0.id == selectedDestinationAccountID })?.name ?? selectedDestinationAccountID
+        
+        // Auto-route ATM Cash Withdrawals to Cash Account
+        var destinationAccountName: String? = nil
+        if isTransfer {
+            destinationAccountName = availableAccounts.first(where: { $0.id == selectedDestinationAccountID })?.name ?? selectedDestinationAccountID
+        } else if isCashWithdrawal {
+            let cashAccount = availableAccounts.first(where: { $0.type == .cash })
+            destinationAccountName = cashAccount?.name ?? "Cash"
+        }
+        
+        let candidateID = editingCandidateId ?? UUID()
+        let resolvedMerchant: String
+        if !merchantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            resolvedMerchant = merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if isCashWithdrawal {
+            resolvedMerchant = "ATM Cash Withdrawal"
+        } else if isTransfer {
+            resolvedMerchant = "Account Transfer"
+        } else {
+            resolvedMerchant = categoryName ?? type.displayName
+        }
         
         let candidate = TransactionCandidate(
-            id: editingCandidateId ?? UUID(),
+            id: candidateID,
             type: type,
             amount: amount,
             currencyCode: currencyCode,
-            merchantName: merchantName.isEmpty ? (categoryName ?? type.displayName) : merchantName,
-            categorySuggestion: categoryName,
+            merchantName: resolvedMerchant,
+            categorySuggestion: isTransfer || isCashWithdrawal ? nil : categoryName,
             accountSuggestion: accountName,
-            destinationAccountSuggestion: isTransfer ? destinationAccountName : nil,
-            paymentMethod: isTransfer ? .netBanking : .upi,
+            destinationAccountSuggestion: destinationAccountName,
+            paymentMethod: isTransfer ? .netBanking : (isCashWithdrawal ? .cash : .upi),
             transactionDate: transactionDate,
             notes: notes.isEmpty ? nil : notes,
             tags: tags,
@@ -190,10 +226,16 @@ public final class ManualTransactionComposerViewModel {
         )
         
         do {
-            try await container.transactionService.createTransaction(candidate)
+            if let editingID = editingCandidateId {
+                // Update existing transaction
+                try await container.transactionService.updateTransaction(id: editingID.uuidString, candidate: candidate)
+            } else {
+                // Create new transaction
+                try await container.transactionService.createTransaction(candidate)
+            }
             
             // Save merchant categorization rule if enabled
-            if rememberRule, !merchantName.isEmpty, let categoryID = selectedCategoryID {
+            if rememberRule, !merchantName.isEmpty, let categoryID = selectedCategoryID, !isTransfer, !isCashWithdrawal {
                 try? await container.merchantRuleService?.saveRule(
                     merchant: merchantName,
                     categoryID: categoryID,
@@ -208,7 +250,7 @@ public final class ManualTransactionComposerViewModel {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             
             appState.showToast(
-                title: "Transaction Logged",
+                title: editingCandidateId != nil ? "Transaction Updated" : "Transaction Logged",
                 message: "\(CurrencyFormatter.shared.format(amount: candidate.amount)) • \(candidate.merchantName)",
                 type: .success
             )

@@ -130,6 +130,8 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
             request.addsPunctuation = true
+            // Enforce 100% on-device speech processing to guarantee privacy invariants
+            request.requiresOnDeviceRecognition = true
             self.recognitionRequest = request
             
             let inputNode = engine.inputNode

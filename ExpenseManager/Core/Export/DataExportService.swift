@@ -188,13 +188,30 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
             )
         }
         
+        // 7. Fetch Import Fingerprints (GT-68)
+        let fpDescriptor = FetchDescriptor<ImportFingerprintRecord>(sortBy: [SortDescriptor(\.createdAt, order: .forward)])
+        let fingerprints = try modelContext.fetch(fpDescriptor).map { fp in
+            ImportFingerprintBackupDTO(
+                id: fp.id,
+                sourceHash: fp.sourceHash,
+                amount: fp.amount,
+                normalizedMerchant: fp.normalizedMerchant,
+                accountLastFour: fp.accountLastFour,
+                transactionReference: fp.transactionReference,
+                approximateTimestamp: fp.approximateTimestamp,
+                source: fp.source,
+                createdAt: fp.createdAt
+            )
+        }
+        
         let backupData = BackupData(
             accounts: accounts,
             categories: categories,
             tags: tags,
             transactions: transactions,
             budgets: budgets,
-            merchantRules: rules
+            merchantRules: rules,
+            importFingerprints: fingerprints
         )
         
         // Compute SHA-256 Checksum on deterministic JSON serialization
@@ -241,6 +258,7 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
     }
     
     public func restoreJSONBackup(from data: Data) async throws -> BackupRestoreResult {
+        // Strict staging: Validate payload completely BEFORE mutating database (GT-68)
         let payload = try validateBackupPayload(data)
         
         do {
@@ -355,6 +373,22 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
                 modelContext.insert(record)
             }
             
+            // 8. Restore Import Fingerprints (GT-68)
+            for fp in payload.data.importFingerprints {
+                let record = ImportFingerprintRecord(
+                    id: fp.id,
+                    sourceHash: fp.sourceHash,
+                    amount: fp.amount,
+                    normalizedMerchant: fp.normalizedMerchant,
+                    accountLastFour: fp.accountLastFour,
+                    transactionReference: fp.transactionReference,
+                    approximateTimestamp: fp.approximateTimestamp,
+                    source: fp.source,
+                    createdAt: fp.createdAt
+                )
+                modelContext.insert(record)
+            }
+            
             try modelContext.save()
             
             return BackupRestoreResult(
@@ -363,7 +397,8 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
                 tagsRestored: payload.data.tags.count,
                 transactionsRestored: payload.data.transactions.count,
                 budgetsRestored: payload.data.budgets.count,
-                rulesRestored: payload.data.merchantRules.count
+                rulesRestored: payload.data.merchantRules.count,
+                fingerprintsRestored: payload.data.importFingerprints.count
             )
         } catch {
             throw DataExportError.databaseRestoreFailed(error.localizedDescription)

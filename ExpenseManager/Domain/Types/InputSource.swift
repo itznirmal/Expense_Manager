@@ -15,6 +15,7 @@ public enum InputSource: String, Codable, CaseIterable, Sendable {
     case voice
     case siri
     case sms
+    case ocr
     case shortcut
     case receipt
     case screenshot
@@ -27,6 +28,7 @@ public enum InputSource: String, Codable, CaseIterable, Sendable {
         case .voice: return "Voice"
         case .siri: return "Siri"
         case .sms: return "SMS Automation"
+        case .ocr: return "OCR / Scan"
         case .shortcut: return "Shortcuts"
         case .receipt: return "Receipt Scan"
         case .screenshot: return "Screenshot"
@@ -41,6 +43,7 @@ public enum InputSource: String, Codable, CaseIterable, Sendable {
         case .voice: return "mic.fill"
         case .siri: return "waveform"
         case .sms: return "message.badge.filled.fill"
+        case .ocr: return "doc.text.viewfinder"
         case .shortcut: return "link"
         case .receipt: return "doc.text.viewfinder"
         case .screenshot: return "photo"

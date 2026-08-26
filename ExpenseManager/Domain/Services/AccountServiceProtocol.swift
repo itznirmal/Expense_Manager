@@ -38,3 +38,9 @@ public protocol AccountServiceProtocol: Sendable {
     /// Calculates the net total balance across all active accounts in base currency.
     func calculateNetWorth() async throws -> Decimal
 }
+
+public extension AccountServiceProtocol {
+    func fetchAccounts() async throws -> [AccountDTO] {
+        try await fetchAccounts(includeArchived: false)
+    }
+}

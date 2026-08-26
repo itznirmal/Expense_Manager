@@ -13,6 +13,8 @@ public enum AccountType: String, Codable, CaseIterable, Sendable {
     case cash
     case bank
     case creditCard
+    case savings
+    case investment
     case wallet
     case other
     
@@ -21,6 +23,8 @@ public enum AccountType: String, Codable, CaseIterable, Sendable {
         case .cash: return "Cash"
         case .bank: return "Bank Account"
         case .creditCard: return "Credit Card"
+        case .savings: return "Savings Account"
+        case .investment: return "Investment"
         case .wallet: return "Digital Wallet"
         case .other: return "Other"
         }
@@ -31,6 +35,8 @@ public enum AccountType: String, Codable, CaseIterable, Sendable {
         case .cash: return "banknote"
         case .bank: return "building.columns.fill"
         case .creditCard: return "creditcard.fill"
+        case .savings: return "banknote.fill"
+        case .investment: return "chart.line.uptrend.xyaxis"
         case .wallet: return "wallet.pass.fill"
         case .other: return "archivebox.fill"
         }

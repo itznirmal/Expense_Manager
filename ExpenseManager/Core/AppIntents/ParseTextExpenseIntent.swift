@@ -33,7 +33,7 @@ public struct ParseTextExpenseIntent: AppIntent {
             return .result(dialog: "Please provide a valid text string to parse.")
         }
         
-        let container = DatabaseContainer.shared.modelContainer
+        let container = DatabaseContainer.shared.container
         let txnService = SwiftDataTransactionService(modelContainer: container)
         let ruleService = MerchantRuleService(modelContainer: container)
         let fingerprintService = ImportFingerprintService(modelContainer: container)

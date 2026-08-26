@@ -45,6 +45,7 @@ final class DataExportAndSecurityTests: XCTestCase {
         let tabInput = "\tTabbedMerchant"
         let carriageInput = "\rCarriageMerchant"
         let normalInput = "Starbucks Coffee"
+        let paddedEquals = "  =SUM(A1:A10)"
         
         XCTAssertEqual(CSVFormulaSanitizer.neutralize(equalsInput), "'=SUM(A1:A10)")
         XCTAssertEqual(CSVFormulaSanitizer.neutralize(cmdInput), "'+cmd|' /C calc'!A0")
@@ -53,6 +54,7 @@ final class DataExportAndSecurityTests: XCTestCase {
         XCTAssertEqual(CSVFormulaSanitizer.neutralize(tabInput), "'\tTabbedMerchant")
         XCTAssertEqual(CSVFormulaSanitizer.neutralize(carriageInput), "'\rCarriageMerchant")
         XCTAssertEqual(CSVFormulaSanitizer.neutralize(normalInput), "Starbucks Coffee")
+        XCTAssertEqual(CSVFormulaSanitizer.neutralize(paddedEquals), "'  =SUM(A1:A10)")
     }
     
     func testCSVFormulaSanitizerEscapingAndQuotes() {
@@ -77,7 +79,7 @@ final class DataExportAndSecurityTests: XCTestCase {
     @MainActor
     func testCSVExportFormattingAndAdversarialNeutralization() async throws {
         // Seed an account and default categories
-        let accountID = try await dependencyContainer.accountService.createAccount(
+        let _ = try await dependencyContainer.accountService.createAccount(
             name: "HDFC Primary",
             type: .bank,
             openingBalance: Decimal(50000),
@@ -92,7 +94,7 @@ final class DataExportAndSecurityTests: XCTestCase {
         let foodCategory = categories.first(where: { $0.name.contains("Food") })!
         
         // Seed Transaction 1: Formula in merchant name
-        var tx1 = TransactionCandidate(
+        let tx1 = TransactionCandidate(
             type: .expense,
             amount: Decimal(1500),
             currencyCode: "INR",
@@ -106,10 +108,10 @@ final class DataExportAndSecurityTests: XCTestCase {
             source: .smartText,
             sourceReference: "-REF9999"
         )
-        try await dependencyContainer.transactionService.saveTransaction(candidate: tx1)
+        try await dependencyContainer.transactionService.createTransaction(tx1)
         
         // Seed Transaction 2: Normal transaction
-        var tx2 = TransactionCandidate(
+        let tx2 = TransactionCandidate(
             type: .income,
             amount: Decimal(85000),
             currencyCode: "INR",
@@ -123,7 +125,7 @@ final class DataExportAndSecurityTests: XCTestCase {
             source: .manual,
             sourceReference: "NEFT-12345"
         )
-        try await dependencyContainer.transactionService.saveTransaction(candidate: tx2)
+        try await dependencyContainer.transactionService.createTransaction(tx2)
         
         // Export CSV
         let csvString = try await exportService.exportTransactionsToCSV(startDate: nil, endDate: nil)
@@ -160,7 +162,7 @@ final class DataExportAndSecurityTests: XCTestCase {
             colorToken: "blue",
             lastFour: "9876"
         )
-        let cashID = try await dependencyContainer.accountService.createAccount(
+        let _ = try await dependencyContainer.accountService.createAccount(
             name: "Pocket Cash",
             type: .cash,
             openingBalance: Decimal(3500),
@@ -181,7 +183,7 @@ final class DataExportAndSecurityTests: XCTestCase {
         )
         
         // 3. Seed Transactions
-        var tx1 = TransactionCandidate(
+        let tx1 = TransactionCandidate(
             type: .expense,
             amount: Decimal(45000),
             currencyCode: "INR",
@@ -194,10 +196,10 @@ final class DataExportAndSecurityTests: XCTestCase {
             tags: ["electronics", "work"],
             source: .manual
         )
-        try await dependencyContainer.transactionService.saveTransaction(candidate: tx1)
+        try await dependencyContainer.transactionService.createTransaction(tx1)
         
         // 4. Seed Budget
-        try await dependencyContainer.budgetService.saveBudget(
+        try await dependencyContainer.budgetService.setBudget(
             categoryID: customCatID,
             limitAmount: Decimal(50000),
             month: Date(),
@@ -259,7 +261,7 @@ final class DataExportAndSecurityTests: XCTestCase {
     @MainActor
     func testJSONBackupChecksumTamperingDetection() async throws {
         // Seed sample data and export
-        try await dependencyContainer.accountService.createAccount(
+        let _ = try await dependencyContainer.accountService.createAccount(
             name: "Axis Bank",
             type: .bank,
             openingBalance: Decimal(10000),
@@ -272,7 +274,7 @@ final class DataExportAndSecurityTests: XCTestCase {
         let originalBackupData = try await exportService.exportJSONBackup()
         
         // Decode to modify data without updating the checksum
-        var payload = try DataExportService.createJSONDecoder().decode(BackupPayload.self, from: originalBackupData)
+        let payload = try DataExportService.createJSONDecoder().decode(BackupPayload.self, from: originalBackupData)
         
         // Create tampered data with manipulated account balance (fraudulent modification)
         let tamperedAccounts = payload.data.accounts.map { acc in
@@ -297,7 +299,8 @@ final class DataExportAndSecurityTests: XCTestCase {
             tags: payload.data.tags,
             transactions: payload.data.transactions,
             budgets: payload.data.budgets,
-            merchantRules: payload.data.merchantRules
+            merchantRules: payload.data.merchantRules,
+            importFingerprints: payload.data.importFingerprints
         )
         
         // Rebuild payload with original (stale) checksum
@@ -334,7 +337,7 @@ final class DataExportAndSecurityTests: XCTestCase {
     @MainActor
     func testDatabasePurgeAndDefaultCategoriesRestoration() async throws {
         // Seed custom accounts, transactions, and custom categories
-        let accID = try await dependencyContainer.accountService.createAccount(
+        let _ = try await dependencyContainer.accountService.createAccount(
             name: "SBI Savings",
             type: .bank,
             openingBalance: Decimal(25000),
@@ -344,7 +347,7 @@ final class DataExportAndSecurityTests: XCTestCase {
             lastFour: "5555"
         )
         
-        let customCatID = try await dependencyContainer.categoryService.createCategory(
+        let _ = try await dependencyContainer.categoryService.createCategory(
             name: "Custom Hobby",
             parentCategoryID: nil,
             icon: "paintbrush.fill",
@@ -352,7 +355,7 @@ final class DataExportAndSecurityTests: XCTestCase {
             type: .expense
         )
         
-        var tx = TransactionCandidate(
+        let tx = TransactionCandidate(
             type: .expense,
             amount: Decimal(2000),
             currencyCode: "INR",
@@ -361,7 +364,7 @@ final class DataExportAndSecurityTests: XCTestCase {
             accountSuggestion: "SBI Savings",
             source: .manual
         )
-        try await dependencyContainer.transactionService.saveTransaction(candidate: tx)
+        try await dependencyContainer.transactionService.createTransaction(tx)
         
         // Verify records exist before purge
         let preTxs = try await dependencyContainer.transactionService.fetchRecentTransactions(limit: 10)

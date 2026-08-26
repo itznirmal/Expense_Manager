@@ -8,17 +8,39 @@
 
 import Foundation
 
+public typealias ConfidenceTier = ConfidenceScore.Tier
+
 /// Represents the parser confidence valuation (0.0 to 1.0) and associated routing tiers.
 public struct ConfidenceScore: Codable, Comparable, Sendable {
     public let value: Double
     
-    public enum Tier: String, Codable, Sendable {
+    public var score: Double {
+        value
+    }
+    
+    public var rawScore: Double {
+        value
+    }
+    
+    public var formattedPercentage: String {
+        "\(Int(round(value * 100)))%"
+    }
+    
+    public enum Tier: String, Codable, Sendable, CaseIterable {
         /// 0.90 – 1.00: Highly confident extraction, eligible for auto-save
         case high
         /// 0.65 – 0.89: Good extraction, review recommended
         case medium
         /// 0.00 – 0.64: Ambiguous or incomplete extraction, manual review required
         case low
+        
+        public var displayName: String {
+            switch self {
+            case .high: return "High"
+            case .medium: return "Medium"
+            case .low: return "Low"
+            }
+        }
     }
     
     public init(_ value: Double) {
@@ -35,6 +57,10 @@ public struct ConfidenceScore: Codable, Comparable, Sendable {
         default:
             return .low
         }
+    }
+    
+    public var confidenceLevel: String {
+        tier.displayName
     }
     
     public var isAutoSaveEligible: Bool {
