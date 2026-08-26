@@ -6,8 +6,7 @@ import PackageDescription
 let package = Package(
     name: "ExpenseManager",
     platforms: [
-        .iOS(.v17),
-        .macOS(.v14)
+        .iOS(.v17)
     ],
     products: [
         .library(
@@ -21,7 +20,12 @@ let package = Package(
             name: "ExpenseManager",
             dependencies: [],
             path: "ExpenseManager",
-            exclude: ["Tests", "Info.plist"]
+            exclude: [
+                "Tests",
+                "Info.plist",
+                "ExpenseManager.entitlements",
+                "PrivacyInfo.xcprivacy"
+            ]
         ),
         .testTarget(
             name: "ExpenseManagerTests",
