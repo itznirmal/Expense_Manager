@@ -9,6 +9,12 @@
 import SwiftUI
 import Observation
 
+public struct CurrencyBalanceDTO: Identifiable, Sendable, Equatable {
+    public var id: String { currencyCode }
+    public let currencyCode: String
+    public let netBalance: Decimal
+}
+
 public struct DashboardCategorySpending: Identifiable, Sendable, Equatable {
     public let id: String
     public let category: String
@@ -34,6 +40,8 @@ public final class DashboardViewModel {
     public var overallBudgetLimit: Decimal = .zero
     public var overallBudgetSpent: Decimal = .zero
     public var monthPacePercent: Double = 0.0
+    
+    public var otherCurrencyBalances: [CurrencyBalanceDTO] = []
     
     public var topCategories: [DashboardCategorySpending] = []
     public var recentTransactions: [TransactionCandidate] = []
@@ -89,7 +97,7 @@ public final class DashboardViewModel {
             let (accounts, recents, monthTransactions, budgets) = try await (fetchedAccounts, fetchedRecent, fetchedMonthTx, fetchedBudgets)
             let baseCurrency = CurrencyFormatter.defaultCurrencyCode
             
-            // 1. Account Assets & Liabilities
+            // 1. Account Assets & Liabilities (Base Currency)
             var assets: Decimal = .zero
             var liabilities: Decimal = .zero
             for acc in accounts where acc.currencyCode == baseCurrency {
@@ -108,6 +116,16 @@ public final class DashboardViewModel {
             self.totalAssets = assets
             self.totalLiabilities = liabilities
             self.netWorth = assets - liabilities
+            
+            // 1.1 Non-Base Multi-Currency Balances (Separated without conversion)
+            let otherCurrencies = Set(accounts.map(\.currencyCode)).filter { $0 != baseCurrency }.sorted()
+            var otherBalances: [CurrencyBalanceDTO] = []
+            for cur in otherCurrencies {
+                let curAccounts = accounts.filter { $0.currencyCode == cur }
+                let netCur = curAccounts.reduce(Decimal.zero) { $0 + $1.balance }
+                otherBalances.append(CurrencyBalanceDTO(currencyCode: cur, netBalance: netCur))
+            }
+            self.otherCurrencyBalances = otherBalances
             
             // 2. Cash Flow Totals
             var inc: Decimal = .zero

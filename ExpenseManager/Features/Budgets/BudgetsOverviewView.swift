@@ -213,7 +213,28 @@ public struct BudgetsOverviewView: View {
     private var overallBudgetHeroCard: some View {
         CardContainer {
             VStack(alignment: .leading, spacing: 14) {
-                HStack {
+                HStack(alignment: .center, spacing: 16) {
+                    // Circular Pace Progress Ring
+                    ZStack {
+                        Circle()
+                            .stroke(ColorTokens.backgroundTertiary, lineWidth: 8)
+                        Circle()
+                            .trim(from: 0.0, to: min(1.0, CGFloat(viewModel.overallProgressPercent)))
+                            .stroke(overallProgressColor, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeInOut(duration: 0.4), value: viewModel.overallProgressPercent)
+                        
+                        VStack(spacing: 0) {
+                            Text("\(Int(viewModel.overallProgressPercent * 100))%")
+                                .font(Typography.subheadline.weight(.bold))
+                                .foregroundStyle(overallProgressColor)
+                            Text("spent")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(ColorTokens.textSecondary)
+                        }
+                    }
+                    .frame(width: 64, height: 64)
+                    
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Overall Monthly Spend")
                             .font(Typography.subheadline)
@@ -222,35 +243,16 @@ public struct BudgetsOverviewView: View {
                         Text(CurrencyFormatter.shared.format(amount: viewModel.totalSpent))
                             .font(Typography.amountHero)
                             .foregroundStyle(ColorTokens.textPrimary)
-                    }
-                    
-                    Spacer()
-                    
-                    // Progress percentage badge
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(Int(viewModel.overallProgressPercent * 100))%")
-                            .font(Typography.title2.weight(.bold))
-                            .foregroundStyle(overallProgressColor)
                         
-                        Text("of \(CurrencyFormatter.shared.formatCompact(amount: viewModel.totalLimit))")
+                        Text("Limit: \(CurrencyFormatter.shared.format(amount: viewModel.totalLimit))")
                             .font(Typography.caption)
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
+                    
+                    Spacer()
                 }
-                
-                // Progress Bar
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(ColorTokens.backgroundTertiary)
-                            .frame(height: 12)
-                        
-                        Capsule()
-                            .fill(overallProgressColor)
-                            .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(viewModel.overallProgressPercent))), height: 12)
-                    }
-                }
-                .frame(height: 12)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Overall monthly budget: \(CurrencyFormatter.shared.format(amount: viewModel.totalSpent)) spent of \(CurrencyFormatter.shared.format(amount: viewModel.totalLimit)) limit. \(Int(viewModel.overallProgressPercent * 100)) percent spent.")
                 
                 Divider()
                     .overlay(ColorTokens.separator)

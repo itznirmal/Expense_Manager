@@ -207,6 +207,8 @@ public struct AnalyticsOverviewView: View {
                     }
                 }
                 .frame(height: 180)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Monthly Income versus Expenses bar chart for \(viewModel.selectedHorizon.displayName). Total Income: \(CurrencyFormatter.shared.format(amount: viewModel.totalIncome)), Total Expense: \(CurrencyFormatter.shared.format(amount: viewModel.totalExpense)).")
                 .chartYAxis {
                     AxisMarks(position: .leading) { value in
                         if let doubleValue = value.as(Double.self) {
@@ -227,9 +229,23 @@ public struct AnalyticsOverviewView: View {
     private var categoryBreakdownSection: some View {
         CardContainer {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Category Spending Breakdown")
-                    .font(Typography.headline)
-                    .foregroundStyle(ColorTokens.textPrimary)
+                HStack {
+                    Text("Category Spending Breakdown")
+                        .font(Typography.headline)
+                        .foregroundStyle(ColorTokens.textPrimary)
+                    
+                    Spacer()
+                    
+                    if selectedCategory != nil {
+                        Button("Reset") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedCategory = nil
+                            }
+                        }
+                        .font(Typography.caption.weight(.semibold))
+                        .foregroundStyle(ColorTokens.brandPrimary)
+                    }
+                }
                 
                 HStack(alignment: .center, spacing: 20) {
                     // Donut Chart
@@ -241,33 +257,71 @@ public struct AnalyticsOverviewView: View {
                         )
                         .foregroundStyle(ColorTokens.color(for: item.colorToken))
                         .cornerRadius(3)
-                        .opacity(selectedCategory == nil || selectedCategory?.id == item.id ? 1.0 : 0.4)
+                        .opacity(selectedCategory == nil || selectedCategory?.id == item.id ? 1.0 : 0.35)
                     }
                     .frame(width: 140, height: 140)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Category spending distribution donut chart with \(viewModel.categoryBreakdowns.count) categories.")
                     
-                    // Legend & Percentages List
+                    // Legend & Interactive Percentages List
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(viewModel.categoryBreakdowns.prefix(4)) { item in
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(ColorTokens.color(for: item.colorToken))
-                                    .frame(width: 10, height: 10)
-                                
-                                Text(item.categoryName)
-                                    .font(Typography.caption.weight(.medium))
-                                    .foregroundStyle(ColorTokens.textPrimary)
-                                    .lineLimit(1)
-                                
-                                Spacer()
-                                
-                                Text("\(Int(item.percentage * 100))%")
-                                    .font(Typography.caption.weight(.semibold))
-                                    .foregroundStyle(ColorTokens.textSecondary)
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    if selectedCategory?.id == item.id {
+                                        selectedCategory = nil
+                                    } else {
+                                        selectedCategory = item
+                                    }
+                                }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }) {
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(ColorTokens.color(for: item.colorToken))
+                                        .frame(width: 10, height: 10)
+                                    
+                                    Text(item.categoryName)
+                                        .font(Typography.caption.weight(selectedCategory?.id == item.id ? .bold : .medium))
+                                        .foregroundStyle(selectedCategory?.id == item.id ? ColorTokens.brandPrimary : ColorTokens.textPrimary)
+                                        .lineLimit(1)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(Int(item.percentage * 100))%")
+                                        .font(Typography.caption.weight(.semibold))
+                                        .foregroundStyle(ColorTokens.textSecondary)
+                                }
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(item.categoryName): \(CurrencyFormatter.shared.format(amount: item.totalAmount)), \(Int(item.percentage * 100)) percent of total spending.")
                         }
                     }
                 }
                 .padding(.vertical, 4)
+                
+                // Selected category callout detail card
+                if let selected = selectedCategory {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(selected.categoryName)
+                                .font(Typography.subheadline.weight(.semibold))
+                                .foregroundStyle(ColorTokens.textPrimary)
+                            Text("\(selected.transactionCount) transactions")
+                                .font(Typography.caption2)
+                                .foregroundStyle(ColorTokens.textSecondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Text(CurrencyFormatter.shared.format(amount: selected.totalAmount))
+                            .font(Typography.headline)
+                            .foregroundStyle(ColorTokens.textPrimary)
+                    }
+                    .padding(10)
+                    .background(ColorTokens.backgroundSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
             }
         }
     }

@@ -277,4 +277,59 @@ final class DashboardAndAnalyticsTests: XCTestCase {
         XCTAssertEqual(swiggyAnomaly?.transaction.amount, Decimal(3500))
         XCTAssertGreaterThan(swiggyAnomaly?.ratio ?? 0, 2.0)
     }
+    
+    // MARK: - 5. Multi-Currency Separation Tests
+    
+    @MainActor
+    func testMultiCurrencySeparationOnDashboard() async throws {
+        // 1. Create INR Account with ₹50,000
+        try await dependencyContainer.accountService.createAccount(
+            name: "HDFC Savings",
+            type: .bank,
+            openingBalance: Decimal(50000),
+            currencyCode: "INR",
+            icon: "building.columns.fill",
+            colorToken: "blue",
+            lastFour: "1234"
+        )
+        
+        // 2. Create USD Account with $1,500
+        try await dependencyContainer.accountService.createAccount(
+            name: "US Chase Checking",
+            type: .bank,
+            openingBalance: Decimal(1500),
+            currencyCode: "USD",
+            icon: "dollarsign.circle.fill",
+            colorToken: "green",
+            lastFour: "5678"
+        )
+        
+        // 3. Create EUR Account with €300
+        try await dependencyContainer.accountService.createAccount(
+            name: "EU N26",
+            type: .bank,
+            openingBalance: Decimal(300),
+            currencyCode: "EUR",
+            icon: "eurosign.circle.fill",
+            colorToken: "orange",
+            lastFour: "9012"
+        )
+        
+        let viewModel = DashboardViewModel()
+        await viewModel.loadDashboardData(container: dependencyContainer, appState: appState)
+        
+        // Base currency (INR) must only include INR accounts
+        XCTAssertEqual(viewModel.netWorth, Decimal(50000))
+        XCTAssertEqual(viewModel.totalAssets, Decimal(50000))
+        
+        // Other currencies must be segregated cleanly
+        XCTAssertEqual(viewModel.otherCurrencyBalances.count, 2)
+        let usdBalance = viewModel.otherCurrencyBalances.first(where: { $0.currencyCode == "USD" })
+        XCTAssertNotNil(usdBalance)
+        XCTAssertEqual(usdBalance?.netBalance, Decimal(1500))
+        
+        let eurBalance = viewModel.otherCurrencyBalances.first(where: { $0.currencyCode == "EUR" })
+        XCTAssertNotNil(eurBalance)
+        XCTAssertEqual(eurBalance?.netBalance, Decimal(300))
+    }
 }

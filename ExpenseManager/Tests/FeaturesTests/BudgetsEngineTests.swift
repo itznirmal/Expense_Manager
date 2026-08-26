@@ -171,9 +171,33 @@ final class BudgetsEngineTests: XCTestCase {
                 alertThresholdPercent: 80
             )
         ]
-        
         let atRisk = vm.atRiskBudgets
         XCTAssertEqual(atRisk.count, 1)
         XCTAssertEqual(atRisk.first?.categoryID, "cat_food")
+    }
+    
+    // MARK: - 5. Over-Budget & Month-End Edge Cases
+    
+    @MainActor
+    func testOverBudgetDailyAllowanceReturnsZero() {
+        let vm = BudgetsViewModel()
+        let now = Date()
+        vm.selectedMonth = now
+        
+        // Limit ₹20,000, Spent ₹25,000 (Over budget by ₹5,000)
+        vm.budgets = [
+            BudgetDTO(
+                id: "b_over",
+                categoryID: nil,
+                categoryName: "Overall Monthly Budget",
+                limitAmount: Decimal(20000),
+                spentAmount: Decimal(25000),
+                month: now,
+                alertThresholdPercent: 80
+            )
+        ]
+        
+        XCTAssertEqual(vm.remainingTotalBudget, Decimal.zero)
+        XCTAssertEqual(vm.dailyAllowance, Decimal.zero, "Daily allowance must be zero when over budget")
     }
 }

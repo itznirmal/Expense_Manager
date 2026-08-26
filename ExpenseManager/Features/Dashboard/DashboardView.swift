@@ -130,9 +130,27 @@ public struct DashboardView: View {
                     }
                 }
                 
-                Text(CurrencyFormatter.shared.format(amount: viewModel.netWorth))
-                    .font(Typography.amountHero)
-                    .foregroundStyle(ColorTokens.textPrimary)
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    Text(CurrencyFormatter.shared.format(amount: viewModel.netWorth))
+                        .font(Typography.amountHero)
+                        .foregroundStyle(ColorTokens.textPrimary)
+                    
+                    if !viewModel.otherCurrencyBalances.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(viewModel.otherCurrencyBalances) { other in
+                                Text("+ \(CurrencyFormatter.shared.format(amount: other.netBalance, currencyCode: other.currencyCode))")
+                                    .font(Typography.caption2.weight(.semibold))
+                                    .foregroundStyle(ColorTokens.brandPrimary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(ColorTokens.brandPrimary.opacity(0.1))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Total Net Worth: \(CurrencyFormatter.shared.format(amount: viewModel.netWorth))\(viewModel.otherCurrencyBalances.map { ", and \(CurrencyFormatter.shared.format(amount: $0.netBalance, currencyCode: $0.currencyCode))" }.joined())")
                 
                 Divider().overlay(ColorTokens.separator)
                 
@@ -145,6 +163,7 @@ public struct DashboardView: View {
                             .font(Typography.caption.weight(.medium))
                             .foregroundStyle(ColorTokens.textPrimary)
                     }
+                    .accessibilityLabel("Total Assets: \(CurrencyFormatter.shared.format(amount: viewModel.totalAssets))")
                     
                     Spacer()
                     
@@ -156,6 +175,7 @@ public struct DashboardView: View {
                             .font(Typography.caption.weight(.medium))
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
+                    .accessibilityLabel("Total Liabilities: \(CurrencyFormatter.shared.format(amount: viewModel.totalLiabilities))")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
