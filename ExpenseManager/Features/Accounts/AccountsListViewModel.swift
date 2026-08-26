@@ -48,7 +48,7 @@ public final class AccountsListViewModel {
     /// Total Assets: Sum of all positive balances across checking, savings, wallets, cash, and investments.
     public var totalAssets: Decimal {
         activeAccounts
-            .filter { $0.type != .creditCard }
+            .filter { $0.type != .creditCard && $0.currencyCode == CurrencyFormatter.defaultCurrencyCode }
             .reduce(Decimal.zero) { sum, acc in
                 acc.balance > .zero ? sum + acc.balance : sum
             }
@@ -57,14 +57,14 @@ public final class AccountsListViewModel {
     /// Total Liabilities: Total outstanding credit card debt or negative balances.
     public var totalLiabilities: Decimal {
         let ccDebt = activeAccounts
-            .filter { $0.type == .creditCard }
+            .filter { $0.type == .creditCard && $0.currencyCode == CurrencyFormatter.defaultCurrencyCode }
             .reduce(Decimal.zero) { sum, acc in
                 // If credit card balance is negative (e.g. -₹12,450), the liability magnitude is ₹12,450
                 acc.balance < .zero ? sum + abs(acc.balance) : sum
             }
         
         let otherNegative = activeAccounts
-            .filter { $0.type != .creditCard && $0.balance < .zero }
+            .filter { $0.type != .creditCard && $0.balance < .zero && $0.currencyCode == CurrencyFormatter.defaultCurrencyCode }
             .reduce(Decimal.zero) { sum, acc in
                 sum + abs(acc.balance)
             }

@@ -55,7 +55,9 @@ public final class SMSIngestionOrchestrator: Sendable {
         
         // Step 2: Multi-Bank Deterministic Extraction
         var draft: ParsedTransactionDraft
+        var accountMaskVal: String? = nil
         if let bankParsed = BankSMSParser.parse(smsText: smsText, referenceDate: referenceDate) {
+            accountMaskVal = bankParsed.accountMask
             draft = ParsedTransactionDraft(
                 type: bankParsed.direction,
                 amount: bankParsed.amount,
@@ -99,7 +101,7 @@ public final class SMSIngestionOrchestrator: Sendable {
                 amount: draft.amount,
                 merchant: draft.merchantName,
                 date: draft.transactionDate,
-                accountLastFour: draft.accountSuggestion,
+                accountLastFour: accountMaskVal,
                 windowSeconds: 300
             )
             if isTimeWindowDuplicate {
@@ -143,11 +145,11 @@ public final class SMSIngestionOrchestrator: Sendable {
             let savedID = try await txnSvc.createTransaction(candidate)
             
             // Record fingerprint
-            try? await fingerprintService?.recordFingerprint(
+            try await fingerprintService?.recordFingerprint(
                 sourceHash: sourceHash,
                 amount: candidate.amount,
                 merchant: candidate.merchantName,
-                accountLastFour: draft.accountSuggestion,
+                accountLastFour: accountMaskVal,
                 reference: candidate.sourceReference,
                 timestamp: candidate.transactionDate,
                 source: "sms"
@@ -161,11 +163,11 @@ public final class SMSIngestionOrchestrator: Sendable {
             let savedID = try await txnSvc.createTransaction(reviewCandidate)
             
             // Record fingerprint to prevent duplicate re-import
-            try? await fingerprintService?.recordFingerprint(
+            try await fingerprintService?.recordFingerprint(
                 sourceHash: sourceHash,
                 amount: candidate.amount,
                 merchant: candidate.merchantName,
-                accountLastFour: draft.accountSuggestion,
+                accountLastFour: accountMaskVal,
                 reference: candidate.sourceReference,
                 timestamp: candidate.transactionDate,
                 source: "sms"

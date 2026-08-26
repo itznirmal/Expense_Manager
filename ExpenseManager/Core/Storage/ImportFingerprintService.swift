@@ -95,6 +95,8 @@ public final class ImportFingerprintService: ImportFingerprintServiceProtocol, S
         timestamp: Date = Date(),
         source: String = "manual"
     ) async throws {
+        if try await hasFingerprint(hash: sourceHash) { return }
+        
         let record = ImportFingerprintRecord(
             id: UUID().uuidString,
             sourceHash: sourceHash,

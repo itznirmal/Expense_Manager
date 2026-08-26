@@ -14,6 +14,7 @@ public enum TransactionServiceError: LocalizedError, Sendable {
     case transactionNotFound(id: String)
     case contextSaveFailed(String)
     case transferMissingDestination
+    case transferSourceAndDestinationMustBeDistinct
     
     public var errorDescription: String? {
         switch self {
@@ -22,6 +23,8 @@ public enum TransactionServiceError: LocalizedError, Sendable {
         case .contextSaveFailed(let message):
             return "Failed to save transaction data: \(message)"
         case .transferMissingDestination:
+            return "Transfers require a valid destination account."
+        case .transferSourceAndDestinationMustBeDistinct:
             return "Transfers require a valid and distinct destination account."
         }
     }
@@ -49,7 +52,15 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         descriptor.fetchLimit = limit
         
         let records = try modelContext.fetch(descriptor)
-        return records.map { $0.toCandidate() }
+        return records.filter { !.isPendingReview }.map { .toCandidate() }
+    }
+    
+    public func fetchPendingReviewTransactions() async throws -> [TransactionCandidate] {
+        let descriptor = FetchDescriptor<TransactionRecord>(
+            sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
+        )
+        let records = try modelContext.fetch(descriptor)
+        return records.filter { .isPendingReview }.map { .toCandidate() }
     }
     
     public func fetchTransactions(
@@ -67,6 +78,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             .filter { record in
                 if let start = startDate, record.transactionDate < start { return false }
                 if let end = endDate, record.transactionDate > end { return false }
+                if record.isPendingReview { return false }
                 if let cat = categoryID, record.category?.id != cat && record.category?.name != cat { return false }
                 if let acc = accountID,
                    record.account?.id != acc &&
@@ -85,7 +97,20 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         let normalizedAmount = abs(candidate.amount)
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
         let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion)
-        let resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
+        var resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
+        
+        if candidate.type == .transfer {
+            guard let dest = resolvedDestinationAccount else {
+                throw TransactionServiceError.transferMissingDestination
+            }
+            if resolvedAccount?.id == dest.id {
+                throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
+            }
+        } else if candidate.type == .cashWithdrawal {
+            resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
+        }
+        
+        let isPending = candidate.needsReview || candidate.isPendingReview
         
         let record = TransactionRecord(
             id: candidate.id.uuidString,
@@ -107,8 +132,13 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             updatedAt: Date()
         )
         
-        // Apply balance adjustment invariant
-        applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+        record.isPendingReview = isPending
+        record.isAccepted = !isPending
+        
+        // Apply balance adjustment invariant only if accepted
+        if !isPending {
+            applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+        }
         
         modelContext.insert(record)
         
@@ -116,7 +146,9 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             try modelContext.save()
         } catch {
             // Rollback balance modification if save fails
-            rollbackBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+            if !isPending {
+                rollbackBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+            }
             modelContext.delete(record)
             throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
         }
@@ -134,14 +166,30 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         let oldAmount = record.amount
         let oldAccount = record.account
         let oldDestAccount = record.destinationAccount
+        let wasPending = record.isPendingReview
         
-        // 1. Roll back old balance effect
-        rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+        // 1. Roll back old balance effect (only if it was accepted)
+        if !wasPending {
+            rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+        }
         
         // 2. Resolve new relationships
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
         let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion)
-        let resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
+        var resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
+        
+        if candidate.type == .transfer {
+            guard let dest = resolvedDestinationAccount else {
+                throw TransactionServiceError.transferMissingDestination
+            }
+            if resolvedAccount?.id == dest.id {
+                throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
+            }
+        } else if candidate.type == .cashWithdrawal {
+            resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
+        }
+        
+        let isPending = candidate.needsReview || candidate.isPendingReview
         
         // 3. Update record properties
         record.transactionType = candidate.type
@@ -158,21 +206,50 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         record.inputSource = candidate.source
         record.sourceReference = candidate.sourceReference
         record.confidence = candidate.confidence.value
+        record.isPendingReview = isPending
+        record.isAccepted = !isPending
         record.updatedAt = Date()
         
-        // 4. Apply new balance effect
-        applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+        // 4. Apply new balance effect (only if accepted)
+        if !isPending {
+            applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+        }
         
         do {
             try modelContext.save()
         } catch {
             // Rollback to old balance state if save fails
-            rollbackBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
-            applyBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+            if !isPending {
+                rollbackBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+            }
+            if !wasPending {
+                applyBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+            }
             throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
         }
     }
     
+        public func acceptTransaction(id: String) async throws {
+        guard let record = try fetchRecord(by: id) else {
+            throw TransactionServiceError.transactionNotFound(id: id)
+        }
+        guard record.isPendingReview else { return }
+        
+        record.isPendingReview = false
+        record.isAccepted = true
+        
+        applyBalanceEffect(for: record.transactionType, amount: record.amount, account: record.account, destinationAccount: record.destinationAccount)
+        
+        do {
+            try modelContext.save()
+        } catch {
+            rollbackBalanceEffect(for: record.transactionType, amount: record.amount, account: record.account, destinationAccount: record.destinationAccount)
+            record.isPendingReview = true
+            record.isAccepted = false
+            throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
+        }
+    }
+
     public func deleteTransaction(id: String) async throws {
         guard let record = try fetchRecord(by: id) else {
             throw TransactionServiceError.transactionNotFound(id: id)
@@ -197,14 +274,14 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         }
     }
     
-    public func calculateTotals(startDate: Date, endDate: Date) async throws -> (income: Decimal, expense: Decimal) {
+    public func calculateTotals(startDate: Date, endDate: Date, currencyCode: String) async throws -> (income: Decimal, expense: Decimal) {
         let descriptor = FetchDescriptor<TransactionRecord>()
         let records = try modelContext.fetch(descriptor)
         
         var totalIncome: Decimal = .zero
         var totalExpense: Decimal = .zero
         
-        for record in records where record.transactionDate >= startDate && record.transactionDate <= endDate {
+        for record in records where record.transactionDate >= startDate && record.transactionDate <= endDate && !record.isPendingReview && record.currencyCode == currencyCode {
             switch record.transactionType {
             case .income, .refund:
                 totalIncome += record.amount
@@ -333,5 +410,29 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         }
         
         return nil
+    }
+
+    private func resolveCashAccount(currencyCode: String) throws -> AccountRecord {
+        let descriptor = FetchDescriptor<AccountRecord>()
+        let accounts = try modelContext.fetch(descriptor)
+        if let cashAccount = accounts.first(where: { .accountType == .cash || .name.localizedCaseInsensitiveCompare("Cash") == .orderedSame }) {
+            return cashAccount
+        }
+        
+        let newCashAccount = AccountRecord(
+            id: UUID().uuidString,
+            name: "Cash",
+            type: .cash,
+            currencyCode: currencyCode,
+            openingBalance: .zero,
+            currentBalance: .zero,
+            icon: "banknote",
+            colorToken: "brandPrimary",
+            lastFour: nil,
+            isArchived: false,
+            createdAt: Date()
+        )
+        modelContext.insert(newCashAccount)
+        return newCashAccount
     }
 }

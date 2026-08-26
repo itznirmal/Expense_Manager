@@ -162,7 +162,7 @@ final class ManualAndSmartEntryTests: XCTestCase {
         XCTAssertEqual(vm.queuedCandidates.first?.id, candidate2.id)
         
         // Discard candidate 2
-        vm.discardCandidate(candidate2, appState: appState)
+        await vm.discardCandidate(candidate2, container: container, appState: appState)
         XCTAssertTrue(vm.queuedCandidates.isEmpty)
     }
 }

@@ -13,7 +13,7 @@ import SwiftData
 @Model
 public final class ImportFingerprintRecord {
     @Attribute(.unique) public var id: String
-    public var sourceHash: String
+    @Attribute(.unique) public var sourceHash: String
     public var amount: Decimal
     public var normalizedMerchant: String
     public var accountLastFour: String?

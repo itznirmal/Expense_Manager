@@ -31,6 +31,8 @@ public final class TransactionRecord {
     public var confidence: Double
     public var createdAt: Date
     public var updatedAt: Date
+    @Attribute public var isPendingReview: Bool = false
+    public var isAccepted: Bool = true
     
     public init(
         id: String = UUID().uuidString,
@@ -106,7 +108,7 @@ public final class TransactionRecord {
             source: inputSource,
             sourceReference: sourceReference,
             confidence: ConfidenceScore(confidence),
-            needsReview: confidence < 0.90,
+            needsReview: isPendingReview,
             warnings: []
         )
     }

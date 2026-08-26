@@ -53,15 +53,14 @@ public final class SettingsViewModel {
     public func toggleBiometrics(enable: Bool, appState: AppState) {
         if enable {
             let context = LAContext()
-            var error: NSError?
-            if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) ||
-               context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            var authError: NSError?
+            if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) {
                 appState.requireBiometrics = true
             } else {
                 appState.requireBiometrics = false
                 appState.showToast(
-                    title: "Biometrics Unavailable",
-                    message: error?.localizedDescription ?? "Face ID or Passcode is not configured on this device.",
+                    title: "Authentication Unavailable",
+                    message: authError?.localizedDescription ?? "Face ID or Passcode is not configured on this device.",
                     type: .warning
                 )
             }

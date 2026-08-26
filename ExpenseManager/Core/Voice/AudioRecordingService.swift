@@ -82,6 +82,7 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
         guard speechStatus == .authorized else { return false }
         
         // 2. Microphone Record Permission
+        #if os(iOS)
         if #available(iOS 17.0, *) {
             let micGranted = await AVAudioApplication.requestRecordPermission()
             return micGranted
@@ -93,6 +94,9 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
             }
             return micGranted
         }
+        #else
+        return true
+        #endif
     }
     
     // MARK: - Recording Operations
@@ -120,9 +124,11 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
         }
         
         do {
+            #if os(iOS)
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+            #endif
             
             let engine = AVAudioEngine()
             self.audioEngine = engine
@@ -201,7 +207,9 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
         recognitionTask?.cancel()
         recognitionTask = nil
         
+                #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
     }
     
     // MARK: - Private Helpers

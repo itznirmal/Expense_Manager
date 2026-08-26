@@ -374,7 +374,7 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
             }
             
             // 8. Restore Import Fingerprints (GT-68)
-            for fp in payload.data.importFingerprints {
+            for fp in (payload.data.importFingerprints ?? []) {
                 let record = ImportFingerprintRecord(
                     id: fp.id,
                     sourceHash: fp.sourceHash,
@@ -389,7 +389,12 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
                 modelContext.insert(record)
             }
             
-            try modelContext.save()
+            do {
+                try modelContext.save()
+            } catch {
+                modelContext.rollback()
+                throw error
+            }
             
             return BackupRestoreResult(
                 accountsRestored: payload.data.accounts.count,
@@ -398,7 +403,7 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
                 transactionsRestored: payload.data.transactions.count,
                 budgetsRestored: payload.data.budgets.count,
                 rulesRestored: payload.data.merchantRules.count,
-                fingerprintsRestored: payload.data.importFingerprints.count
+                fingerprintsRestored: payload.data.importFingerprints?.count ?? 0
             )
         } catch {
             throw DataExportError.databaseRestoreFailed(error.localizedDescription)
@@ -446,7 +451,12 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
                 }
             }
             
-            try modelContext.save()
+            do {
+                try modelContext.save()
+            } catch {
+                modelContext.rollback()
+                throw error
+            }
         } catch {
             throw DataExportError.databasePurgeFailed(error.localizedDescription)
         }

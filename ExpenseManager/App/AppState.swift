@@ -103,6 +103,7 @@ public final class AppState {
     }
     
     public var isBiometricallyLocked: Bool
+    public var biometricErrorMessage: String? = nil
     
     private var toastDismissTask: Task<Void, Never>?
     
@@ -117,26 +118,37 @@ public final class AppState {
     public func lockApp() {
         if requireBiometrics {
             self.isBiometricallyLocked = true
+            self.biometricErrorMessage = nil
         }
     }
     
     public func authenticateBiometrics() {
+        guard requireBiometrics else {
+            self.isBiometricallyLocked = false
+            return
+        }
+        
         let context = LAContext()
         var error: NSError?
         
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) ||
               context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-            // If biometrics/passcode not configured, unlock fail-safe
-            self.isBiometricallyLocked = false
+            // Fail closed
+            self.isBiometricallyLocked = true
+            self.biometricErrorMessage = "Biometrics or passcode not configured."
             return
         }
         
         let reason = "Unlock Expense Manager to access your financial records."
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { [weak self] success, _ in
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { [weak self] success, evalError in
             Task { @MainActor in
                 guard let self = self else { return }
                 if success {
                     self.isBiometricallyLocked = false
+                    self.biometricErrorMessage = nil
+                } else {
+                    self.isBiometricallyLocked = true
+                    self.biometricErrorMessage = evalError?.localizedDescription ?? "Authentication failed."
                 }
             }
         }

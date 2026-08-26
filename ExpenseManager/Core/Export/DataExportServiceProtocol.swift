@@ -307,7 +307,7 @@ public struct BackupData: Codable, Sendable, Equatable {
     public let transactions: [TransactionBackupDTO]
     public let budgets: [BudgetBackupDTO]
     public let merchantRules: [MerchantRuleBackupDTO]
-    public let importFingerprints: [ImportFingerprintBackupDTO]
+    public var importFingerprints: [ImportFingerprintBackupDTO]?
     
     public init(
         accounts: [AccountBackupDTO] = [],
@@ -316,7 +316,7 @@ public struct BackupData: Codable, Sendable, Equatable {
         transactions: [TransactionBackupDTO] = [],
         budgets: [BudgetBackupDTO] = [],
         merchantRules: [MerchantRuleBackupDTO] = [],
-        importFingerprints: [ImportFingerprintBackupDTO] = []
+        importFingerprints: [ImportFingerprintBackupDTO]? = []
     ) {
         self.accounts = accounts
         self.categories = categories

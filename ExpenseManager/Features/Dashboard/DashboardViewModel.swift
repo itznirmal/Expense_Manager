@@ -87,11 +87,12 @@ public final class DashboardViewModel {
             async let fetchedBudgets = container.budgetService.fetchBudgets(for: now)
             
             let (accounts, recents, monthTransactions, budgets) = try await (fetchedAccounts, fetchedRecent, fetchedMonthTx, fetchedBudgets)
+            let baseCurrency = CurrencyFormatter.defaultCurrencyCode
             
             // 1. Account Assets & Liabilities
             var assets: Decimal = .zero
             var liabilities: Decimal = .zero
-            for acc in accounts {
+            for acc in accounts where acc.currencyCode == baseCurrency {
                 if acc.type == .creditCard {
                     if acc.balance < .zero {
                         liabilities += abs(acc.balance)
@@ -111,7 +112,7 @@ public final class DashboardViewModel {
             // 2. Cash Flow Totals
             var inc: Decimal = .zero
             var exp: Decimal = .zero
-            for tx in monthTransactions {
+            for tx in monthTransactions where tx.currencyCode == baseCurrency {
                 switch tx.type {
                 case .income, .refund:
                     inc += tx.amount

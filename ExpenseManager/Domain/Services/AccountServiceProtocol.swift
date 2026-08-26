@@ -35,12 +35,19 @@ public protocol AccountServiceProtocol: Sendable {
     /// Archives or restores an account.
     func setArchived(accountID: String, isArchived: Bool) async throws
     
-    /// Calculates the net total balance across all active accounts in base currency.
-    func calculateNetWorth() async throws -> Decimal
+    /// Calculates the net total balance across all active accounts matching baseCurrency.
+    func calculateNetWorth(in baseCurrency: String) async throws -> Decimal
+    
+    /// Calculates net worth grouped by currency.
+    func calculateNetWorthByCurrency() async throws -> [String: Decimal]
 }
 
 public extension AccountServiceProtocol {
     func fetchAccounts() async throws -> [AccountDTO] {
         try await fetchAccounts(includeArchived: false)
+    }
+    
+    func calculateNetWorth(in baseCurrency: String = "INR") async throws -> Decimal {
+        return try await calculateNetWorth(in: baseCurrency)
     }
 }

@@ -47,7 +47,7 @@ public final class ReviewQueueViewModel {
     }
     
     public var highConfidenceEligibleCount: Int {
-        queuedCandidates.filter { $0.confidence.value >= 0.85 }.count
+        queuedCandidates.filter { $0.confidence.value >= 0.90 }.count
     }
     
     // MARK: - Actions
@@ -58,16 +58,7 @@ public final class ReviewQueueViewModel {
         defer { isLoading = false }
         
         do {
-            // Fetch recent transactions that need review or were ingested via automated streams
-            let recents = try await container.transactionService.fetchRecentTransactions(limit: 50)
-            let reviewItems = recents.filter { $0.needsReview || $0.confidence.requiresReview }
-            
-            if !reviewItems.isEmpty {
-                self.queuedCandidates = reviewItems
-            } else if queuedCandidates.isEmpty {
-                // Pre-populate realistic sample pending items for first-launch exploration
-                self.queuedCandidates = Self.defaultSampleReviewQueue()
-            }
+            self.queuedCandidates = try await container.transactionService.fetchPendingReviewTransactions()
         } catch {
             self.errorMessage = "Failed to load review queue: \(error.localizedDescription)"
         }
@@ -78,16 +69,8 @@ public final class ReviewQueueViewModel {
         container: DependencyContainer,
         appState: AppState
     ) async {
-        var accepted = candidate
-        accepted.needsReview = false
-        
         do {
-            // Check if transaction exists in storage, update it, or create if new
-            do {
-                try await container.transactionService.updateTransaction(id: candidate.id.uuidString, candidate: accepted)
-            } catch {
-                try await container.transactionService.createTransaction(accepted)
-            }
+            try await container.transactionService.acceptTransaction(id: candidate.id.uuidString)
             
             queuedCandidates.removeAll { $0.id == candidate.id }
             appState.pendingReviewCount = queuedCandidates.count
@@ -95,7 +78,7 @@ public final class ReviewQueueViewModel {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             appState.showToast(
                 title: "Accepted Transaction",
-                message: "\(CurrencyFormatter.shared.format(amount: candidate.amount)) • \(candidate.merchantName)",
+                message: "\(CurrencyFormatter.shared.format(amount: candidate.amount)) – \(candidate.merchantName)",
                 type: .success
             )
         } catch {
@@ -105,80 +88,36 @@ public final class ReviewQueueViewModel {
     }
     
     public func acceptAllEligible(container: DependencyContainer, appState: AppState) async {
-        let eligible = queuedCandidates.filter { $0.confidence.value >= 0.85 }
+        let eligible = queuedCandidates.filter { $0.confidence.value >= 0.90 }
         for candidate in eligible {
             await acceptCandidate(candidate, container: container, appState: appState)
         }
     }
     
-    public func discardCandidate(_ candidate: TransactionCandidate, container: DependencyContainer? = nil, appState: AppState) async {
-        if let container = container {
-            try? await container.transactionService.deleteTransaction(id: candidate.id.uuidString)
+    public func discardCandidate(
+        _ candidate: TransactionCandidate,
+        container: DependencyContainer,
+        appState: AppState
+    ) async {
+        do {
+            try await container.transactionService.deleteTransaction(id: candidate.id.uuidString)
+            queuedCandidates.removeAll { $0.id == candidate.id }
+            appState.pendingReviewCount = queuedCandidates.count
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            appState.showToast(
+                title: "Transaction Discarded",
+                message: "\(candidate.merchantName.isEmpty ? "Unknown" : candidate.merchantName)",
+                type: .info
+            )
+        } catch {
+            self.errorMessage = "Failed to discard candidate: \(error.localizedDescription)"
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
-        queuedCandidates.removeAll { $0.id == candidate.id }
-        appState.pendingReviewCount = queuedCandidates.count
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        appState.showToast(
-            title: "Transaction Discarded",
-            message: "\(candidate.merchantName.isEmpty ? "Unknown" : candidate.merchantName)",
-            type: .info
-        )
     }
     
     public func startEditing(_ candidate: TransactionCandidate) {
         self.candidateToEdit = candidate
     }
     
-    public static func defaultSampleReviewQueue() -> [TransactionCandidate] {
-        [
-            TransactionCandidate(
-                id: UUID(),
-                type: .expense,
-                amount: Decimal(1250),
-                currencyCode: "INR",
-                merchantName: "AMZN MKTP IN",
-                categorySuggestion: "Shopping",
-                accountSuggestion: nil,
-                paymentMethod: .creditCard,
-                transactionDate: Date().addingTimeInterval(-3600 * 4),
-                notes: nil,
-                source: .sms,
-                confidence: ConfidenceScore(0.72),
-                needsReview: true,
-                warnings: ["Unassigned bank/payment account"]
-            ),
-            TransactionCandidate(
-                id: UUID(),
-                type: .expense,
-                amount: Decimal(450),
-                currencyCode: "INR",
-                merchantName: "CHAIPOI VENDOR",
-                categorySuggestion: nil,
-                accountSuggestion: "HDFC Bank",
-                paymentMethod: .upi,
-                transactionDate: Date().addingTimeInterval(-3600 * 18),
-                notes: nil,
-                source: .sms,
-                confidence: ConfidenceScore(0.68),
-                needsReview: true,
-                warnings: ["Uncategorized transaction"]
-            ),
-            TransactionCandidate(
-                id: UUID(),
-                type: .expense,
-                amount: Decimal(58000),
-                currencyCode: "INR",
-                merchantName: "Apple Store",
-                categorySuggestion: "Electronics",
-                accountSuggestion: "HDFC Credit Card",
-                paymentMethod: .creditCard,
-                transactionDate: Date().addingTimeInterval(-3600 * 26),
-                notes: "Purchased Apple Store Mumbai",
-                source: .ocr,
-                confidence: ConfidenceScore(0.88),
-                needsReview: true,
-                warnings: ["High value transaction requires confirmation"]
-            )
-        ]
-    }
+
 }
