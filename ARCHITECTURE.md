@@ -10,13 +10,24 @@ graph TD
     VM --> AppState[AppState Coordinator]
     VM --> DI[DependencyContainer]
     DI --> Services[Domain Service Protocols]
+    
+    subgraph Ingestion Pipeline
+    Raw[SMS / Voice / Smart Text] --> Ingest[Ingestion Orchestrator]
+    Ingest --> Classifier[AC-PARSE-2 Safety Classifier]
+    Classifier --> Dedup[Deduplication Fingerprint]
+    Dedup --> Confidence[Confidence Engine]
+    Confidence -- ">= 0.90" --> Ledger[(SwiftData Ledger)]
+    Confidence -- "< 0.90" --> Queue[Review Queue]
+    Queue --> Ledger
+    end
+    
+    Services --> Ingest
     Services --> Impl[SwiftData & In-Memory Implementations]
-    Services --> Parser[Hybrid 3-Layer Parser Pipeline]
     Services --> Export[DataExportService & AC-SEC-1 Sanitizer]
-    Parser --> Models[Normalized TransactionCandidate DTO]
+    
     Export --> CSV[(Sanitized CSV Ledger)]
     Export --> JSON[(SHA-256 Checksummed Backup)]
-    Impl --> Storage[(SwiftData Local Schema)]
+    Impl --> Ledger
 ```
 
 ---
@@ -95,7 +106,16 @@ ExpenseManager/
 - **Never `Double` or `Float`** for monetary values.
 - **Deterministic Math**: Totals, balances, and budget calculations are computed strictly by deterministic Swift application code — never delegated to an LLM.
 
-### 3.2 Unified Ingestion Pipeline
+### 3.2 Schema Versioning & Migration Mechanics
+- **VersionedSchema**: All local storage entities are versioned using `VersionedSchema` (e.g., `ExpenseManagerSchemaV1`).
+- **MigrationPlan**: Schema evolutions are managed via `ExpenseManagerMigrationPlan`, executing lightweight staging migrations.
+- **Atomic Operations**: Database transactions ensure atomicity. If a batch insert or complex migration fails, the context is rolled back instantly preventing partial states.
+
+### 3.3 Error Handling & Atomic Rollbacks
+- **Graceful Degradation**: Core pipelines are wrapped in safe error handlers.
+- **Rollbacks**: If validation invariants fail before `.save()`, the `ModelContext` performs an atomic `.rollback()`.
+
+### 3.4 Unified Ingestion Pipeline
 All entry channels (Manual, Smart Text, Voice, SMS, Siri, OCR) feed into the **same normalized pipeline**:
 ```text
 Raw Ingestion (Manual / Smart Text / Voice / SMS / Siri)
@@ -115,21 +135,21 @@ Duplicate Detection Engine (SHA-256 Source Hash & 5-Minute Sliding Window)
 SwiftData Persistent Ledger
 ```
 
-### 3.3 CSV Formula Injection Neutralization (`AC-SEC-1`)
+### 3.5 CSV Formula Injection Neutralization (`AC-SEC-1`)
 - **Vulnerability Defense**: Protects against CSV Formula Injection / Formula Injection Attacks (CWE-1236).
 - **Rule**: Any string field (Merchant name, notes, category, account, reference, tag) starting with `=`, `+`, `-`, `@`, `\t`, `\r` **MUST** be prefixed with `'` (single quote) during CSV generation.
 - **RFC-4180 Escaping**: Fields containing commas, double quotes (escaped as `""`), or newlines are wrapped in standard RFC-4180 quotes.
 
-### 3.4 Cryptographic JSON Backup & Restore
+### 3.6 Cryptographic JSON Backup & Restore
 - **Payload Integrity**: Complete SwiftData stores are serialized into structured JSON packages containing accounts, categories, tags, transactions, budgets, and merchant rules.
 - **SHA-256 Checksums**: The JSON-encoded content is cryptographically signed with a SHA-256 hash. During restoration, the checksum is verified prior to touching the local database. Tampered backup files are strictly rejected.
 
-### 3.5 Privacy & Sensitive Data Protection
+### 3.7 Privacy & Sensitive Data Protection
 - **Zero Sensitive Logging**: Full bank account numbers, complete card numbers, and raw SMS payloads are sanitized by `AppLogger` (`•••• 4321`, `FP-A84B91E2`).
 - **100% Local-First**: Transactions and accounts reside in local on-device SwiftData persistence.
 - **Zero Third-Party Telemetry**: No external analytics, crash reporters, or tracking SDKs.
 
-### 3.6 Dependency Injection & Preview Architecture
+### 3.8 Dependency Injection & Preview Architecture
 - Every feature depends only on **Domain Protocols** (`TransactionServiceProtocol`, `AccountServiceProtocol`, `DataExportServiceProtocol`, etc.).
 - `DependencyContainer` provides `.mock()` for instant, deterministic SwiftUI previews and unit tests, and `.live(modelContainer:)` for runtime production.
 - Views access state and dependencies cleanly through `@Environment(\.appState)` and `@Environment(\.dependencyContainer)`.

@@ -4,10 +4,11 @@
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
 [![SwiftData](https://img.shields.io/badge/Storage-SwiftData-purple.svg)](https://developer.apple.com/xcode/swiftdata/)
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-red.svg)](https://developer.apple.com/xcode/swiftui/)
-[![Privacy](https://img.shields.io/badge/Privacy-100%25%20On--Device-brightgreen.svg)]()
+[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Offline--Zero%20Cloud-brightgreen.svg)]()
 [![Security](https://img.shields.io/badge/Security-AC--SEC--1%20Escaped-success.svg)]()
+[![CI Passing](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 
-A high-precision, privacy-first personal finance and expense tracking application engineered in **Swift 6** and **SwiftUI** for **iOS 17+ and iOS 18+**. Built specifically for the modern multi-account lifestyle and the Indian banking / UPI ecosystem, Expense Manager pairs instant on-device intelligence with strict zero-cloud security.
+A high-precision, privacy-first personal finance and expense tracking application engineered in **Swift 6** and **SwiftUI** for **iOS 17+ and iOS 18+**. Built specifically for the modern multi-account lifestyle and the Indian banking / UPI ecosystem, Expense Manager pairs instant on-device intelligence with strict zero-cloud security. It features advanced **SMS parsing, UPI noise stripping, voice logging, budget pace projections, and Swift Charts**.
 
 ---
 
@@ -16,7 +17,7 @@ A high-precision, privacy-first personal finance and expense tracking applicatio
 - [Key Features](#-key-features)
 - [Architecture & Tech Stack](#-architecture--tech-stack)
 - [Directory Structure](#-directory-structure)
-- [Security & Financial Invariants](#-security--financial-invariants)
+- [Security & Privacy Manifesto](#-security--financial-invariants)
 - [Getting Started & Setup Guide](#-getting-started--setup-guide)
 - [Apple Shortcuts & Bank SMS Automation Guide](#-apple-shortcuts--bank-sms-automation-guide)
 - [Test Suites & Quality Verification](#-test-suites--quality-verification)
@@ -178,9 +179,9 @@ ExpenseManager/
 
 ---
 
-## 🔒 Security & Financial Invariants
+## 🔒 Security & Privacy Manifesto
 
-Expense Manager is designed with non-negotiable security and mathematical invariants:
+Expense Manager is designed with non-negotiable security and privacy guarantees:
 
 | Identifier | Invariant Rule | Implementation Detail |
 | :--- | :--- | :--- |
