@@ -10,7 +10,7 @@ import SwiftUI
 import LocalAuthentication
 
 /// Full-screen biometric gate displayed when the application is locked via Face ID, Touch ID, or Passcode.
-public struct BiometricLockView: View {
+public struct BiometricLockShieldView: View {
     @Environment(\.appState) private var appState
     
     public init() {}
@@ -65,6 +65,6 @@ public struct BiometricLockView: View {
 }
 
 #Preview {
-    BiometricLockView()
+    BiometricLockShieldView()
         .environment(AppState())
 }

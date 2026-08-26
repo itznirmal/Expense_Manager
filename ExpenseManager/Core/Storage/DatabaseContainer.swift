@@ -14,15 +14,7 @@ public final class DatabaseContainer: @unchecked Sendable {
     
     // MARK: - Canonical Schema
     
-    public static let schema = Schema([
-        TransactionRecord.self,
-        AccountRecord.self,
-        CategoryRecord.self,
-        TagRecord.self,
-        MerchantRuleRecord.self,
-        ImportFingerprintRecord.self,
-        BudgetRecord.self
-    ])
+    public static let schema = ExpenseManagerSchemaV1.schema
     
     // MARK: - Shared Production Singleton
     
@@ -60,10 +52,14 @@ public final class DatabaseContainer: @unchecked Sendable {
     /// Creates a production SQLite or in-memory `ModelContainer`.
     public static func createContainer(inMemory: Bool = false) throws -> ModelContainer {
         let configuration = ModelConfiguration(
-            schema: schema,
+            schema: ExpenseManagerSchemaV1.schema,
             isStoredInMemoryOnly: inMemory
         )
-        return try ModelContainer(for: schema, configurations: [configuration])
+        return try ModelContainer(
+            for: ExpenseManagerSchemaV1.self,
+            migrationPlan: ExpenseManagerMigrationPlan.self,
+            configurations: configuration
+        )
     }
     
     /// Convenience factory for isolated in-memory unit tests and SwiftUI previews.

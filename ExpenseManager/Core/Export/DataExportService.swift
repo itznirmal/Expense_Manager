@@ -246,6 +246,17 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
             throw DataExportError.unsupportedSchemaVersion(payload.schemaVersion)
         }
         
+        // Structural validation
+        guard !payload.data.categories.isEmpty else {
+            throw DataExportError.backupDecodingFailed("Payload is empty or missing essential categories.")
+        }
+        
+        for tx in payload.data.transactions {
+            guard tx.amount >= 0 else {
+                throw DataExportError.backupDecodingFailed("Corrupted negative amount found in transactions.")
+            }
+        }
+        
         // Validate SHA-256 checksum integrity
         let encoder = Self.createJSONEncoder()
         let reencodedData = try encoder.encode(payload.data)

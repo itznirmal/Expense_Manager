@@ -204,8 +204,12 @@ public struct SettingsView: View {
                     HStack {
                         Text("Persistence")
                         Spacer()
-                        Text("SwiftData (Local SQLite)")
-                            .foregroundStyle(ColorTokens.textSecondary)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("SwiftData (Local SQLite)")
+                            Text("iOS Data Protection (NSFileProtectionComplete)")
+                                .font(Typography.caption2)
+                        }
+                        .foregroundStyle(ColorTokens.textSecondary)
                     }
                     
                     HStack {

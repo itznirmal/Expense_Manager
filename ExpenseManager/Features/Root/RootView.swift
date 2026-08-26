@@ -21,7 +21,7 @@ public struct RootView: View {
         
         ZStack(alignment: .top) {
             if appState.requireBiometrics && appState.isBiometricallyLocked {
-                BiometricLockView()
+                BiometricLockShieldView()
                     .transition(.opacity)
                     .zIndex(200)
             } else {

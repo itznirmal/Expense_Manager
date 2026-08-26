@@ -51,21 +51,39 @@ public final class SettingsViewModel {
     // MARK: - Biometric Toggle Check (GT-66)
     
     public func toggleBiometrics(enable: Bool, appState: AppState) {
-        if enable {
-            let context = LAContext()
-            var authError: NSError?
-            if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) {
-                appState.requireBiometrics = true
-            } else {
-                appState.requireBiometrics = false
-                appState.showToast(
-                    title: "Authentication Unavailable",
-                    message: authError?.localizedDescription ?? "Face ID or Passcode is not configured on this device.",
-                    type: .warning
-                )
-            }
-        } else {
+        let context = LAContext()
+        var authError: NSError?
+        
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) else {
             appState.requireBiometrics = false
+            appState.showToast(
+                title: "Authentication Unavailable",
+                message: authError?.localizedDescription ?? "Face ID or Passcode is not configured on this device.",
+                type: .warning
+            )
+            return
+        }
+        
+        let reason = enable ? "Authenticate to enable App Lock." : "Authenticate to disable App Lock."
+        
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, error in
+            Task { @MainActor in
+                if success {
+                    appState.requireBiometrics = enable
+                    appState.showToast(
+                        title: "Security Updated",
+                        message: enable ? "App Lock enabled." : "App Lock disabled.",
+                        type: .success
+                    )
+                } else {
+                    // Revert UI if needed, but since it's an intent, we just don't change the state.
+                    appState.showToast(
+                        title: "Authentication Failed",
+                        message: "Unable to change security settings.",
+                        type: .error
+                    )
+                }
+            }
         }
     }
     
@@ -85,8 +103,10 @@ public final class SettingsViewModel {
             
             let tempDir = FileManager.default.temporaryDirectory
             let fileURL = tempDir.appendingPathComponent(filename)
-            try csvContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            let csvData = Data(csvContent.utf8)
+            try csvData.write(to: fileURL, options: .completeFileProtection)
             
+            cleanupTempFiles(excluding: fileURL)
             self.csvExportURL = fileURL
             appState.showToast(
                 title: "CSV Export Ready",
@@ -118,8 +138,9 @@ public final class SettingsViewModel {
             
             let tempDir = FileManager.default.temporaryDirectory
             let fileURL = tempDir.appendingPathComponent(filename)
-            try backupData.write(to: fileURL)
+            try backupData.write(to: fileURL, options: .completeFileProtection)
             
+            cleanupTempFiles(excluding: fileURL)
             self.backupExportURL = fileURL
             appState.showToast(
                 title: "Backup Created",
@@ -203,6 +224,17 @@ public final class SettingsViewModel {
                 message: error.localizedDescription,
                 type: .error
             )
+        }
+    }
+    
+    private func cleanupTempFiles(excluding url: URL) {
+        let tempDir = FileManager.default.temporaryDirectory
+        guard let files = try? FileManager.default.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil) else { return }
+        
+        for file in files {
+            if file.lastPathComponent.hasPrefix("ExpenseManager_") && file != url {
+                try? FileManager.default.removeItem(at: file)
+            }
         }
     }
 }

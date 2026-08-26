@@ -186,14 +186,15 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
     }
     
     public func stopRecording() async {
-        silenceTimer?.cancel()
-        silenceTimer = nil
-        
-        lock.withLock {
+        let oldTimer = lock.withLock { () -> Task<Void, Never>? in
+            let timer = silenceTimer
+            silenceTimer = nil
             _isRecording = false
             _audioPower = 0.0
             hasHeardSpeech = false
+            return timer
         }
+        oldTimer?.cancel()
         
         audioEngine?.stop()
         if let inputNode = audioEngine?.inputNode {
@@ -207,7 +208,7 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
         recognitionTask?.cancel()
         recognitionTask = nil
         
-                #if os(iOS)
+        #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
     }
@@ -215,8 +216,7 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
     // MARK: - Private Helpers
     
     private func restartSilenceTimer() {
-        silenceTimer?.cancel()
-        silenceTimer = Task { [weak self] in
+        let newTask = Task { [weak self] in
             guard let self = self else { return }
             try? await Task.sleep(nanoseconds: UInt64(self.silenceTimeout * 1_000_000_000))
             if !Task.isCancelled {
@@ -226,6 +226,13 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
                 }
             }
         }
+        
+        let oldTimer = lock.withLock { () -> Task<Void, Never>? in
+            let old = silenceTimer
+            silenceTimer = newTask
+            return old
+        }
+        oldTimer?.cancel()
     }
     
     private func calculateRMS(buffer: AVAudioPCMBuffer) -> Float {
