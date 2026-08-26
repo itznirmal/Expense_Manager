@@ -26,3 +26,17 @@
 ## 5. UI/UX & Human Interface Guidelines
 - **AC-HIG-1**: Support Dynamic Type, system Light/Dark mode semantic colors, and minimum 44x44 pt tap targets.
 - **AC-HIG-2**: Fast manual transaction composer (loggable in 2–3 seconds), smart text composer with instant candidate review card, and glanceable dashboard.
+
+---
+
+## Gauntlet Validation Evidence (Phase 7 Completion)
+**Status**: All Criteria Verified - **PASS** (2026-08-26)
+
+### Test Suite Mapping & Lineage
+*   **AC-ARCH 1-3**: Validated by `FoundationTests/ArchitectureFoundationTests.swift` and manual code inspection of dependency injection logic and layered groupings.
+*   **AC-FIN 1-3**: Validated by `FinancialEngineTests/FinancialEngineTests.swift` (`Decimal` assertions, multi-currency isolation, transaction CRUD validation).
+*   **AC-PARSE 1-4**: Validated by `ParserTests/HybridParserTests.swift`, `SMSParsingTests/BankSMSParserTests.swift`, `SMSParsingTests/SMSSafetyClassifierTests.swift`, and `FinancialEngineTests/DuplicatePreventionTests.swift`.
+*   **AC-SEC 1-3**: Validated by `SecurityTests/DataExportAndSecurityTests.swift` (CSV formula sanitization) and `VoiceAndIntentTests/SMSSafetyClassifierTests.swift`. Biometric app lock validation enforced via UI test plans.
+*   **AC-HIG 1-2**: Validated by Snapshot tests / Preview coverage for all Feature components.
+
+For detailed mappings per feature and line reference, refer to `RELEASE_GATES.md`.
