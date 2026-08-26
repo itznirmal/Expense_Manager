@@ -18,6 +18,7 @@ public protocol ImportFingerprintServiceProtocol: Sendable {
         merchant: String,
         date: Date,
         accountLastFour: String?,
+        referenceNumber: String?,
         windowSeconds: TimeInterval
     ) async throws -> Bool
     func recordFingerprint(
@@ -60,6 +61,7 @@ public final class ImportFingerprintService: ImportFingerprintServiceProtocol, S
         merchant: String,
         date: Date,
         accountLastFour: String?,
+        referenceNumber: String? = nil,
         windowSeconds: TimeInterval = 300 // 5-minute default window
     ) async throws -> Bool {
         let normalized = merchant.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -72,6 +74,11 @@ public final class ImportFingerprintService: ImportFingerprintServiceProtocol, S
         let records = try modelContext.fetch(descriptor)
         
         return records.contains { item in
+            // Exact reference number match is a guaranteed duplicate
+            if let ref = referenceNumber, let itemRef = item.transactionReference, !ref.isEmpty {
+                if ref == itemRef { return true }
+            }
+            
             guard item.amount == amount else { return false }
             guard item.approximateTimestamp >= windowStart && item.approximateTimestamp <= windowEnd else { return false }
             

@@ -158,6 +158,11 @@ public struct BankSMSParser: Sendable {
         if lower.contains("canara") { return "Canara Bank" }
         if lower.contains("union bank") { return "Union Bank of India" }
         if lower.contains("bank of baroda") || lower.contains("bob") { return "Bank of Baroda" }
+        if lower.contains("federal bank") { return "Federal Bank" }
+        if lower.contains("paytm") { return "Paytm Payments Bank" }
+        if lower.contains("cred") { return "CRED" }
+        if lower.contains("phonepe") { return "PhonePe" }
+        if lower.contains("gpay") || lower.contains("google pay") { return "Google Pay" }
         return nil
     }
     

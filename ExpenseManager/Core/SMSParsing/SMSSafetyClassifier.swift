@@ -152,7 +152,8 @@ public struct SMSSafetyClassifier: Sendable {
             "\\b(?:otp|one time password|verification code|security code|login code|passcode)\\b",
             "\\b(?:is your secret|valid for|do not share|never share|valid till|expires in)\\b",
             "\\b(?:is the otp for|auth code|authentication code)\\b",
-            "\\b(?:use otp|enter otp)\\b"
+            "\\b(?:use otp|enter otp)\\b",
+            "\\b(?:to verify your)\\b"
         ]
         
         // Check for presence of OTP keywords
@@ -168,7 +169,8 @@ public struct SMSSafetyClassifier: Sendable {
         let securityPatterns = [
             "\\b(?:card.*blocked|card.*has been blocked|temporarily blocked|card.*locked)\\b",
             "\\b(?:unauthorized transaction|suspicious activity|fraud alert|security alert)\\b",
-            "\\b(?:prevent misuse|permanently blocked|deactivated)\\b"
+            "\\b(?:prevent misuse|permanently blocked|deactivated|hotlisted|hotlisting)\\b",
+            "\\b(?:if not done by you|report immediately)\\b"
         ]
         for pattern in securityPatterns {
             if text.range(of: pattern, options: .regularExpression) != nil {
@@ -181,7 +183,8 @@ public struct SMSSafetyClassifier: Sendable {
     private static func isDeclinedTransaction(_ text: String) -> Bool {
         let declinedPatterns = [
             "\\b(?:declined|txn declined|transaction declined|was declined|got declined)\\b",
-            "\\b(?:due to insufficient|insufficient balance|insufficient funds|limit exceeded|daily limit)\\b"
+            "\\b(?:due to insufficient|insufficient balance|insufficient funds|limit exceeded|daily limit)\\b",
+            "\\b(?:authorization declined|auth declined|payment rejected)\\b"
         ]
         for pattern in declinedPatterns {
             if text.range(of: pattern, options: .regularExpression) != nil {
@@ -209,7 +212,8 @@ public struct SMSSafetyClassifier: Sendable {
             "\\b(?:pre-approved|pre approved|instant loan|personal loan|apply now|click here)\\b",
             "\\b(?:congratulations.*offer|get.*cashback|use code|voucher worth|special offer)\\b",
             "\\b(?:zero interest|lifetime free|upgrade your card|increase limit to)\\b",
-            "\\b(?:discount up to|flat\\s+\\d+% off|limited period offer)\\b"
+            "\\b(?:discount up to|flat\\s+\\d+% off|limited period offer)\\b",
+            "\\b(?:credit limit enhancement|limit increased|enjoy higher limit)\\b"
         ]
         for pattern in marketingPatterns {
             if text.range(of: pattern, options: .regularExpression) != nil {
@@ -223,7 +227,8 @@ public struct SMSSafetyClassifier: Sendable {
         let billPatterns = [
             "\\b(?:total amount due|minimum amount due|min amount due|bill is generated)\\b",
             "\\b(?:payment due date|statement for.*card|bill of rs|bill due on)\\b",
-            "\\b(?:pay before.*to avoid|due date is|card statement)\\b"
+            "\\b(?:pay before.*to avoid|due date is|card statement)\\b",
+            "\\b(?:emi.*due|emi of rs|upcoming emi|reminder: emi)\\b"
         ]
         for pattern in billPatterns {
             if text.range(of: pattern, options: .regularExpression) != nil {

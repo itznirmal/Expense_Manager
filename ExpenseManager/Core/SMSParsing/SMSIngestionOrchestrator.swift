@@ -102,6 +102,7 @@ public final class SMSIngestionOrchestrator: Sendable {
                 merchant: draft.merchantName,
                 date: draft.transactionDate,
                 accountLastFour: accountMaskVal,
+                referenceNumber: draft.referenceNumber,
                 windowSeconds: 300
             )
             if isTimeWindowDuplicate {

@@ -31,9 +31,11 @@ public struct MerchantNormalizer: Sendable {
     public init() {}
     
     // Noise patterns to strip from merchant strings
-    private static let noisePrefixRegex = "(?i)^(?:vpa\\*?|upi[/\\*]?|pos[/\\*]?|txn[/\\*]?|info\\*|payment\\s+to\\s+|sent\\s+to\\s+|paid\\s+to\\s+|purchase\\s+(?:at|on)\\s+|spent\\s+at\\s+|billdesk\\*|razorpay\\*|paytm\\*|cc\\*|direct\\s+debit\\s+|ref[/\\*]?)\\s*"
+    private static let noisePrefixRegex = "(?i)^(?:vpa\\*?|upi[/\\*]?|pos[/\\*]?|e-com[/\\*]?|txn[/\\*]?|info\\*|payment\\s+to\\s+|sent\\s+to\\s+|paid\\s+to\\s+|purchase\\s+(?:at|on)\\s+|spent\\s+at\\s+|billdesk\\*|razorpay\\*|paytm\\*|cc\\*|direct\\s+debit\\s+|ref[/\\*]?)\\s*"
     
-    private static let noiseSuffixRegex = "(?i)\\s*(?:(?:pvt\\.?\\s+ltd\\.?)|(?:private\\s+limited)|(?:ltd\\.?)|(?:limited)|(?:llp\\.?)|(?:inc\\.?)|(?:corp\\.?)|(?:co\\.?)|(?:india\\s+pvt\\s+ltd)|(?:india\\s+private\\s+limited)|(?:india\\s+technology)|(?:india\\s+technologies)|(?:india)|(?:technology)|(?:technologies)|(?:services)|(?:entertainment)|(?:commerce)|(?:retail)|(?:quick\\s+commerce)|(?:petrol\\s+pump))\\b"
+    private static let noiseSuffixRegex = "(?i)\\s*(?:(?:pvt\\.?\\s+ltd\\.?)|(?:private\\s+limited)|(?:ltd\\.?)|(?:limited)|(?:llp\\.?)|(?:inc\\.?)|(?:corp\\.?)|(?:co\\.?)|(?:india\\s+pvt\\s+ltd)|(?:india\\s+private\\s+limited)|(?:india\\s+technology)|(?:india\\s+technologies)|(?:india)|(?:technology)|(?:technologies)|(?:services)|(?:entertainment)|(?:commerce)|(?:retail\\s+limited)|(?:retail)|(?:quick\\s+commerce)|(?:petrol\\s+pump))\\b"
+    
+    private static let vpaNoiseRegex = "(?i)(?:\\.payu@|okaxis|okhdfcbank|oksbi|paytm|apl)\\b"
     
     private static let locationNoiseRegex = "(?i)\\*(?:bangalore|mumbai|delhi|gurgaon|hyderabad|pune|chennai|noida|kolkata|ahmedabad|india)\\b"
     
@@ -41,28 +43,47 @@ public struct MerchantNormalizer: Sendable {
     private static let knownMerchants: [String: (name: String, category: String)] = [
         "swiggy": ("Swiggy", "Food & Dining"),
         "zomato": ("Zomato", "Food & Dining"),
+        "blinkit": ("Blinkit", "Groceries"),
+        "zepto": ("Zepto", "Groceries"),
+        "bigbasket": ("BigBasket", "Groceries"),
+        "bbnow": ("BigBasket Now", "Groceries"),
+        "instamart": ("Swiggy Instamart", "Groceries"),
+        "d-mart": ("D-Mart", "Groceries"),
+        "dmart": ("D-Mart", "Groceries"),
+        "nature's basket": ("Nature's Basket", "Groceries"),
+        "natures basket": ("Nature's Basket", "Groceries"),
         "uber": ("Uber", "Transportation"),
         "ola": ("Ola", "Transportation"),
         "rapido": ("Rapido", "Transportation"),
+        "makemytrip": ("MakeMyTrip", "Travel"),
+        "mmt": ("MakeMyTrip", "Travel"),
+        "irctc": ("IRCTC", "Travel"),
+        "indigo": ("IndiGo", "Travel"),
         "amazon": ("Amazon", "Shopping"),
         "flipkart": ("Flipkart", "Shopping"),
         "myntra": ("Myntra", "Shopping"),
+        "nykaa": ("Nykaa", "Shopping"),
+        "ajio": ("Ajio", "Shopping"),
+        "tata neu": ("Tata Neu", "Shopping"),
+        "tataneu": ("Tata Neu", "Shopping"),
+        "decathlon": ("Decathlon", "Sports & Fitness"),
         "starbucks": ("Starbucks", "Food & Dining"),
+        "netflix": ("Netflix", "Entertainment"),
+        "spotify": ("Spotify", "Entertainment"),
+        "bookmyshow": ("BookMyShow", "Entertainment"),
+        "bms": ("BookMyShow", "Entertainment"),
+        "airtel": ("Airtel", "Bills & Utilities"),
+        "jio": ("Jio", "Bills & Utilities"),
+        "bescom": ("BESCOM", "Bills & Utilities"),
+        "tata power": ("Tata Power", "Bills & Utilities"),
         "mcdonalds": ("McDonald's", "Food & Dining"),
         "mcdonald's": ("McDonald's", "Food & Dining"),
         "dominos": ("Domino's Pizza", "Food & Dining"),
         "domino's": ("Domino's Pizza", "Food & Dining"),
         "kfc": ("KFC", "Food & Dining"),
-        "netflix": ("Netflix", "Entertainment"),
-        "spotify": ("Spotify", "Entertainment"),
         "apple": ("Apple", "Subscriptions"),
         "google": ("Google", "Subscriptions"),
         "youtube": ("YouTube", "Entertainment"),
-        "blinkit": ("Blinkit", "Groceries"),
-        "zepto": ("Zepto", "Groceries"),
-        "instamart": ("Swiggy Instamart", "Groceries"),
-        "bigbasket": ("BigBasket", "Groceries"),
-        "bbnow": ("BigBasket Now", "Groceries"),
         "dunzo": ("Dunzo", "Groceries"),
         "shell": ("Shell", "Fuel"),
         "hp petrol": ("HP Fuel", "Fuel"),
@@ -70,25 +91,16 @@ public struct MerchantNormalizer: Sendable {
         "bpcl": ("BP Fuel", "Fuel"),
         "ioc": ("Indian Oil", "Fuel"),
         "indianoil": ("Indian Oil", "Fuel"),
-        "airtel": ("Airtel", "Bills & Utilities"),
-        "jio": ("Jio", "Bills & Utilities"),
         "vodafone": ("Vi", "Bills & Utilities"),
         "vi": ("Vi", "Bills & Utilities"),
-        "makemytrip": ("MakeMyTrip", "Travel"),
-        "mmt": ("MakeMyTrip", "Travel"),
-        "bookmyshow": ("BookMyShow", "Entertainment"),
-        "bms": ("BookMyShow", "Entertainment"),
         "apollo": ("Apollo Pharmacy", "Healthcare"),
         "apollo pharmacy": ("Apollo Pharmacy", "Healthcare"),
         "medplus": ("MedPlus", "Healthcare"),
         "pharmeasy": ("PharmEasy", "Healthcare"),
         "1mg": ("Tata 1mg", "Healthcare"),
-        "decathlon": ("Decathlon", "Sports & Fitness"),
         "cultfit": ("Cult.fit", "Health & Fitness"),
         "curefit": ("Cult.fit", "Health & Fitness"),
-        "indigo": ("IndiGo", "Travel"),
         "air india": ("Air India", "Travel"),
-        "irctc": ("IRCTC", "Travel"),
         "uber india": ("Uber", "Transportation"),
         "amazon pay": ("Amazon", "Shopping"),
         "flipkart internet": ("Flipkart", "Shopping"),
@@ -108,6 +120,9 @@ public struct MerchantNormalizer: Sendable {
         
         // 1. Remove noise prefixes
         cleaned = cleaned.replacingOccurrences(of: noisePrefixRegex, with: "", options: .regularExpression)
+        
+        // 1.5. Remove VPA handle noise
+        cleaned = cleaned.replacingOccurrences(of: vpaNoiseRegex, with: "", options: .regularExpression)
         
         // 2. Remove location noise (*BANGALORE, *MUMBAI)
         cleaned = cleaned.replacingOccurrences(of: locationNoiseRegex, with: "", options: .regularExpression)
