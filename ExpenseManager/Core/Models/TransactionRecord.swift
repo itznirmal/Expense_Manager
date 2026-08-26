@@ -33,6 +33,7 @@ public final class TransactionRecord {
     public var updatedAt: Date
     @Attribute public var isPendingReview: Bool = false
     public var isAccepted: Bool = true
+    public var reviewReasons: [String] = []
     
     public init(
         id: String = UUID().uuidString,

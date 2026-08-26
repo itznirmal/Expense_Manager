@@ -36,7 +36,7 @@ public final class SwiftDataBudgetService: BudgetServiceProtocol, Sendable {
         let transactions = try modelContext.fetch(txDescriptor)
         
         let monthTransactions = transactions.filter { tx in
-            tx.transactionDate >= startOfMonth && tx.transactionDate <= endOfMonth && tx.transactionType == .expense
+            tx.transactionDate >= startOfMonth && tx.transactionDate <= endOfMonth && tx.transactionType == .expense && !tx.isPendingReview
         }
         
         let categoryDescriptor = FetchDescriptor<CategoryRecord>()

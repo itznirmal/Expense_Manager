@@ -145,11 +145,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         do {
             try modelContext.save()
         } catch {
-            // Rollback balance modification if save fails
-            if !isPending {
-                rollbackBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
-            }
-            modelContext.delete(record)
+            modelContext.rollback()
             throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
         }
         
@@ -218,18 +214,12 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         do {
             try modelContext.save()
         } catch {
-            // Rollback to old balance state if save fails
-            if !isPending {
-                rollbackBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
-            }
-            if !wasPending {
-                applyBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
-            }
+            modelContext.rollback()
             throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
         }
     }
     
-        public func acceptTransaction(id: String) async throws {
+    public func acceptTransaction(id: String) async throws {
         guard let record = try fetchRecord(by: id) else {
             throw TransactionServiceError.transactionNotFound(id: id)
         }
@@ -243,9 +233,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         do {
             try modelContext.save()
         } catch {
-            rollbackBalanceEffect(for: record.transactionType, amount: record.amount, account: record.account, destinationAccount: record.destinationAccount)
-            record.isPendingReview = true
-            record.isAccepted = false
+            modelContext.rollback()
             throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
         }
     }
@@ -259,17 +247,19 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         let oldAmount = record.amount
         let oldAccount = record.account
         let oldDestAccount = record.destinationAccount
+        let wasPending = record.isPendingReview
         
-        // Roll back balance effect prior to deletion
-        rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+        // Roll back balance effect prior to deletion ONLY if it was accepted
+        if !wasPending {
+            rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+        }
         
         modelContext.delete(record)
         
         do {
             try modelContext.save()
         } catch {
-            // Reapply balance effect if delete fails
-            applyBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+            modelContext.rollback()
             throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
         }
     }

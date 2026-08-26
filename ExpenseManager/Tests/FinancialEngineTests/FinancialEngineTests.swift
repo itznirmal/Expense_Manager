@@ -632,5 +632,207 @@ final class FinancialEngineTests: XCTestCase {
         
         let updatedAccount = try await accountService.getAccount(id: accountId)
         XCTAssertEqual(updatedAccount?.balance, Decimal(6000), "Updating with negative amount must normalize and result in 10,000 - 4,000 = 6,000")
+    
+    // MARK: - 15. Pending-Review Transaction Lifecycle
+    
+    @MainActor
+    func testPendingReviewTransactionLifecycle() async throws {
+        let accountId = try await accountService.createAccount(
+            name: "Test Bank",
+            type: .bank,
+            openingBalance: Decimal(10000),
+            currencyCode: "INR",
+            icon: "bank",
+            colorToken: "blue",
+            lastFour: "1234"
+        )
+        
+        // 1. Create pending expense of 1,000 -> balance unchanged
+        let pendingCandidate = TransactionCandidate(
+            type: .expense,
+            amount: Decimal(1000),
+            currencyCode: "INR",
+            merchantName: "Pending Merchant",
+            accountSuggestion: accountId,
+            source: .sms,
+            needsReview: true
+        )
+        
+        let txId = try await transactionService.createTransaction(pendingCandidate)
+        var acc = try await accountService.getAccount(id: accountId)
+        XCTAssertEqual(acc?.balance, Decimal(10000), "Pending expense must not reduce account balance initially")
+        
+        // 2. Edit pending expense to 1,500 -> balance still unchanged
+        var editCandidate = pendingCandidate
+        editCandidate.amount = Decimal(1500)
+        try await transactionService.updateTransaction(id: txId, candidate: editCandidate)
+        
+        acc = try await accountService.getAccount(id: accountId)
+        XCTAssertEqual(acc?.balance, Decimal(10000), "Editing a pending expense must not reduce account balance")
+        
+        // 3. Accept pending expense -> balance debited by 1,500
+        try await transactionService.acceptTransaction(id: txId)
+        acc = try await accountService.getAccount(id: accountId)
+        XCTAssertEqual(acc?.balance, Decimal(8500), "Accepting a pending expense must reduce account balance (10,000 - 1,500)")
+        
+        // 4. Accept pending expense a second time -> balance remains 8,500
+        try await transactionService.acceptTransaction(id: txId)
+        acc = try await accountService.getAccount(id: accountId)
+        XCTAssertEqual(acc?.balance, Decimal(8500), "Accepting an already accepted expense must be idempotent")
+        
+        // 5. Delete accepted expense -> balance restored
+        try await transactionService.deleteTransaction(id: txId)
+        acc = try await accountService.getAccount(id: accountId)
+        XCTAssertEqual(acc?.balance, Decimal(10000), "Deleting an accepted expense must restore the balance")
+    }
+    
+    @MainActor
+    func testPendingReviewDiscardWithoutBalanceReversal() async throws {
+        let accountId = try await accountService.createAccount(
+            name: "Test Bank 2",
+            type: .bank,
+            openingBalance: Decimal(10000),
+            currencyCode: "INR",
+            icon: "bank",
+            colorToken: "blue",
+            lastFour: "1234"
+        )
+        
+        // Create pending expense of 2,000
+        let pendingCandidate = TransactionCandidate(
+            type: .expense,
+            amount: Decimal(2000),
+            currencyCode: "INR",
+            merchantName: "Bad SMS",
+            accountSuggestion: accountId,
+            source: .sms,
+            needsReview: true
+        )
+        
+        let txId = try await transactionService.createTransaction(pendingCandidate)
+        var acc = try await accountService.getAccount(id: accountId)
+        XCTAssertEqual(acc?.balance, Decimal(10000))
+        
+        // Discard (delete) pending expense -> balance remains 10,000
+        try await transactionService.deleteTransaction(id: txId)
+        acc = try await accountService.getAccount(id: accountId)
+        XCTAssertEqual(acc?.balance, Decimal(10000), "Discarding a pending expense must not restore balance since it never deducted it")
+    }
+    
+    // MARK: - 16. Domain Transfer, Cash Withdrawal Net Worth Invariance
+    
+    @MainActor
+    func testTransferAndCashWithdrawalNetWorthInvariance() async throws {
+        let bankId = try await accountService.createAccount(
+            name: "Main Bank",
+            type: .bank,
+            openingBalance: Decimal(50000),
+            currencyCode: "INR",
+            icon: "bank",
+            colorToken: "blue",
+            lastFour: "1234"
+        )
+        // Cash account doesn't exist yet, initial Net Worth 50,000.
+        let initialNetWorth = try await accountService.calculateNetWorth(in: "INR")
+        XCTAssertEqual(initialNetWorth, Decimal(50000))
+        
+        // Withdraw 5,000 Cash from Bank
+        let withdrawalCandidate = TransactionCandidate(
+            type: .cashWithdrawal,
+            amount: Decimal(5000),
+            currencyCode: "INR",
+            merchantName: "ATM",
+            accountSuggestion: bankId,
+            source: .manual
+        )
+        
+        try await transactionService.createTransaction(withdrawalCandidate)
+        
+        let bankAccount = try await accountService.getAccount(id: bankId)
+        XCTAssertEqual(bankAccount?.balance, Decimal(45000), "Bank balance must be debited by 5,000")
+        
+        let allAccounts = try await accountService.fetchAccounts(includeArchived: false)
+        let cashAccount = allAccounts.first(where: { $0.type == .cash })
+        XCTAssertNotNil(cashAccount, "Cash account should be automatically resolved or created")
+        XCTAssertEqual(cashAccount?.balance, Decimal(5000), "Cash balance must be credited by 5,000")
+        
+        let postWithdrawalNetWorth = try await accountService.calculateNetWorth(in: "INR")
+        XCTAssertEqual(postWithdrawalNetWorth, Decimal(50000), "Net Worth must remain 50,000")
+        
+        let now = Date()
+        let startOfDay = Calendar.current.startOfDay(for: now)
+        let endOfDay = startOfDay.addingTimeInterval(86400)
+        let totals = try await transactionService.calculateTotals(startDate: startOfDay, endDate: endOfDay, currencyCode: "INR")
+        
+        XCTAssertEqual(totals.expense, Decimal.zero, "Cash withdrawal must not inflate expense")
+    }
+    
+    // MARK: - 17. Atomic Duplicate Import Prevention
+    
+    @MainActor
+    func testAtomicDuplicateImportPrevention() async throws {
+        let accountId = try await accountService.createAccount(
+            name: "Test Bank",
+            type: .bank,
+            openingBalance: Decimal(10000),
+            currencyCode: "INR",
+            icon: "bank",
+            colorToken: "blue",
+            lastFour: "1234"
+        )
+        
+        let amount = Decimal(450)
+        let merchant = "Uber"
+        let now = Date()
+        
+        let candidate = TransactionCandidate(
+            type: .expense,
+            amount: amount,
+            currencyCode: "INR",
+            merchantName: merchant,
+            accountSuggestion: accountId,
+            transactionDate: now,
+            source: .sms
+        )
+        
+        // Wrap in do-catch simulating fingerprint check + creation atomicity
+        func processSMS() async throws -> Bool {
+            let isDup = try await fingerprintService.isDuplicate(
+                amount: amount,
+                merchant: merchant,
+                date: now,
+                accountLastFour: "1234",
+                windowSeconds: 300
+            )
+            
+            if isDup {
+                return false // was duplicate
+            }
+            
+            let hash = ImportFingerprintService.computeSourceHash(amount: amount, merchant: merchant, timestamp: now, reference: nil)
+            try await fingerprintService.recordFingerprint(
+                sourceHash: hash,
+                amount: amount,
+                merchant: merchant,
+                accountLastFour: "1234",
+                reference: nil,
+                timestamp: now,
+                source: "sms"
+            )
+            try await transactionService.createTransaction(candidate)
+            return true // created
+        }
+        
+        // Simulating sequence (not true concurrent since MainActor doesn't do true parallel within one thread, but tests sequence)
+        let firstResult = try await processSMS()
+        let secondResult = try await processSMS()
+        let thirdResult = try await processSMS()
+        
+        XCTAssertTrue(firstResult)
+        XCTAssertFalse(secondResult)
+        XCTAssertFalse(thirdResult)
+        
+        let transactions = try await transactionService.fetchTransactions(startDate: now.addingTimeInterval(-10), endDate: now.addingTimeInterval(10), categoryID: nil, accountID: accountId)
+        XCTAssertEqual(transactions.count, 1, "Exactly 1 transaction must be created")
     }
 }

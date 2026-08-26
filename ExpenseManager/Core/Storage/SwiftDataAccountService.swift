@@ -79,7 +79,12 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
         )
         
         modelContext.insert(record)
-        try modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw AccountServiceError.contextSaveFailed(error.localizedDescription)
+        }
         
         return record.id
     }
@@ -92,14 +97,23 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
         record.name = account.name
         record.accountType = account.type
         record.currencyCode = account.currencyCode
-        record.currentBalance = account.balance
+        
         // Preserve original openingBalance
+        // If the balance is updated manually, update currentBalance, do not alter openingBalance.
+        let balanceDelta = account.balance - record.currentBalance
+        record.currentBalance = account.balance
+        
         record.icon = account.icon
         record.colorToken = account.colorToken
         record.lastFour = account.lastFour
         record.isArchived = account.isArchived
         
-        try modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw AccountServiceError.contextSaveFailed(error.localizedDescription)
+        }
     }
     
     public func setArchived(accountID: String, isArchived: Bool) async throws {
@@ -108,7 +122,13 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
         }
         
         record.isArchived = isArchived
-        try modelContext.save()
+        
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw AccountServiceError.contextSaveFailed(error.localizedDescription)
+        }
     }
     
     /// Calculates the net total balance across active accounts matching baseCurrency.

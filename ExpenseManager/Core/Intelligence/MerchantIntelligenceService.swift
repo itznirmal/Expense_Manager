@@ -155,7 +155,7 @@ public final class MerchantIntelligenceService: MerchantIntelligenceServiceProto
     
     public func detectRecurringSubscriptions(from transactions: [TransactionCandidate]) -> [RecurringSubscription] {
         let calendar = Calendar.current
-        let expenses = transactions.filter { $0.type == .expense && $0.amount > .zero }
+        let expenses = transactions.filter { $0.type == .expense && $0.amount > .zero && !$0.needsReview }
         
         // Group by normalized merchant name
         let grouped = Dictionary(grouping: expenses) { tx in
@@ -266,7 +266,7 @@ public final class MerchantIntelligenceService: MerchantIntelligenceServiceProto
     // MARK: - 2. Merchant Insights & Metrics
     
     public func calculateMerchantInsights(from transactions: [TransactionCandidate]) -> [MerchantSpendingInsight] {
-        let expenses = transactions.filter { $0.type == .expense && $0.amount > .zero }
+        let expenses = transactions.filter { $0.type == .expense && $0.amount > .zero && !$0.needsReview }
         let grouped = Dictionary(grouping: expenses) { tx in
             tx.merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -312,7 +312,7 @@ public final class MerchantIntelligenceService: MerchantIntelligenceServiceProto
         let now = Date()
         guard let cutoffDate = calendar.date(byAdding: .day, value: -historicalDays, to: now) else { return [] }
         
-        let expenses = transactions.filter { $0.type == .expense && $0.amount > .zero && $0.transactionDate >= cutoffDate }
+        let expenses = transactions.filter { $0.type == .expense && $0.amount > .zero && !$0.needsReview && $0.transactionDate >= cutoffDate }
         let grouped = Dictionary(grouping: expenses) { tx in
             tx.merchantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
@@ -356,10 +356,8 @@ public final class MerchantIntelligenceService: MerchantIntelligenceServiceProto
         return alerts
     }
     
-    // MARK: - 4. Categorization Rule Suggestions
-    
     public func suggestCategorizationRules(from transactions: [TransactionCandidate]) -> [CategoryRuleSuggestion] {
-        let expenses = transactions.filter { $0.type == .expense && !($0.categorySuggestion?.isEmpty ?? true) }
+        let expenses = transactions.filter { $0.type == .expense && !$0.needsReview && !($0.categorySuggestion?.isEmpty ?? true) }
         let grouped = Dictionary(grouping: expenses) { tx in
             tx.merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
         }

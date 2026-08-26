@@ -38,6 +38,7 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
         let filteredRecords = records.filter { record in
             if let start = startDate, record.transactionDate < start { return false }
             if let end = endDate, record.transactionDate > end { return false }
+            if record.isPendingReview { return false }
             return true
         }
         
