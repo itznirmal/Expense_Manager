@@ -155,7 +155,10 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
                 sourceReference: tx.sourceReference,
                 confidence: tx.confidence,
                 createdAt: tx.createdAt,
-                updatedAt: tx.updatedAt
+                updatedAt: tx.updatedAt,
+                isPendingReview: tx.isPendingReview,
+                isAccepted: tx.isAccepted,
+                reviewReasons: tx.reviewReasons
             )
         }
         
@@ -352,6 +355,9 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
                     createdAt: tx.createdAt,
                     updatedAt: tx.updatedAt
                 )
+                record.isPendingReview = tx.isPendingReview
+                record.isAccepted = tx.isAccepted
+                record.reviewReasons = tx.reviewReasons
                 modelContext.insert(record)
             }
             

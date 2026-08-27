@@ -1,0 +1,16 @@
+ISS-018 static verification — 2026-08-27
+
+Scope:
+- ExpenseManager/Core/Export/DataExportServiceProtocol.swift
+- ExpenseManager/Core/Export/DataExportService.swift
+- ExpenseManager/Tests/ExportTests/DataExportAndSecurityTests.swift
+
+Checks:
+- TransactionBackupDTO carries isPendingReview, isAccepted, and reviewReasons.
+- Missing review-state keys decode to TransactionRecord defaults: false, true, and an empty list.
+- Default-valued review-state keys are omitted during encoding so legacy schema-version-1 BackupData checksums remain valid after decode/re-encode validation.
+- DataExportService exports all three review-state values and applies them to restored TransactionRecord instances.
+- Added an in-memory SwiftData pending-review round-trip test covering pending, unaccepted, and review-reason state.
+- Added a legacy payload test with review-state keys absent, checksum validation, safe defaults, and restore verification.
+- PowerShell structural checks passed for DTO fields, legacy defaults, export mapping, restore mapping, regression tests, and git diff --check.
+- Swift/Xcode build and XCTest execution: not run; no Swift toolchain is installed on this Windows host. macOS/Xcode remains the manual evidence gate.

@@ -259,6 +259,35 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
     public let confidence: Double
     public let createdAt: Date
     public let updatedAt: Date
+    /// Whether the transaction is waiting for review. Missing in legacy backups, where it defaults to `false`.
+    public let isPendingReview: Bool
+    /// Whether the transaction's ledger effect was accepted. Missing in legacy backups, where it defaults to `true`.
+    public let isAccepted: Bool
+    /// Review diagnostics attached to the transaction. Missing in legacy backups, where it defaults to an empty list.
+    public let reviewReasons: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case amount
+        case currencyCode
+        case merchantName
+        case categoryID
+        case accountID
+        case destinationAccountID
+        case paymentMethod
+        case transactionDate
+        case notes
+        case tags
+        case source
+        case sourceReference
+        case confidence
+        case createdAt
+        case updatedAt
+        case isPendingReview
+        case isAccepted
+        case reviewReasons
+    }
     
     public init(
         id: String,
@@ -277,7 +306,10 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         sourceReference: String?,
         confidence: Double,
         createdAt: Date,
-        updatedAt: Date
+        updatedAt: Date,
+        isPendingReview: Bool = false,
+        isAccepted: Bool = true,
+        reviewReasons: [String] = []
     ) {
         self.id = id
         self.type = type
@@ -296,6 +328,66 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         self.confidence = confidence
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.isPendingReview = isPendingReview
+        self.isAccepted = isAccepted
+        self.reviewReasons = reviewReasons
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.type = try container.decode(String.self, forKey: .type)
+        self.amount = try container.decode(Decimal.self, forKey: .amount)
+        self.currencyCode = try container.decode(String.self, forKey: .currencyCode)
+        self.merchantName = try container.decode(String.self, forKey: .merchantName)
+        self.categoryID = try container.decodeIfPresent(String.self, forKey: .categoryID)
+        self.accountID = try container.decodeIfPresent(String.self, forKey: .accountID)
+        self.destinationAccountID = try container.decodeIfPresent(String.self, forKey: .destinationAccountID)
+        self.paymentMethod = try container.decodeIfPresent(String.self, forKey: .paymentMethod)
+        self.transactionDate = try container.decode(Date.self, forKey: .transactionDate)
+        self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        self.tags = try container.decode([String].self, forKey: .tags)
+        self.source = try container.decode(String.self, forKey: .source)
+        self.sourceReference = try container.decodeIfPresent(String.self, forKey: .sourceReference)
+        self.confidence = try container.decode(Double.self, forKey: .confidence)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        self.isPendingReview = try container.decodeIfPresent(Bool.self, forKey: .isPendingReview) ?? false
+        self.isAccepted = try container.decodeIfPresent(Bool.self, forKey: .isAccepted) ?? true
+        self.reviewReasons = try container.decodeIfPresent([String].self, forKey: .reviewReasons) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(type, forKey: .type)
+        try container.encode(amount, forKey: .amount)
+        try container.encode(currencyCode, forKey: .currencyCode)
+        try container.encode(merchantName, forKey: .merchantName)
+        try container.encodeIfPresent(categoryID, forKey: .categoryID)
+        try container.encodeIfPresent(accountID, forKey: .accountID)
+        try container.encodeIfPresent(destinationAccountID, forKey: .destinationAccountID)
+        try container.encodeIfPresent(paymentMethod, forKey: .paymentMethod)
+        try container.encode(transactionDate, forKey: .transactionDate)
+        try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encode(tags, forKey: .tags)
+        try container.encode(source, forKey: .source)
+        try container.encodeIfPresent(sourceReference, forKey: .sourceReference)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+
+        // The defaults are intentionally omitted so schema-version-1 backups created before review
+        // state existed retain their original checksum after decode and re-encode validation.
+        if isPendingReview {
+            try container.encode(isPendingReview, forKey: .isPendingReview)
+        }
+        if !isAccepted {
+            try container.encode(isAccepted, forKey: .isAccepted)
+        }
+        if !reviewReasons.isEmpty {
+            try container.encode(reviewReasons, forKey: .reviewReasons)
+        }
     }
 }
 

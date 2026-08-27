@@ -274,3 +274,11 @@ Evidence: evidence/transaction-services/iss-017/static-verification.txt; Expense
 Open: ISS-018, ISS-019, ISS-020.
 Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
 Next: Build and run the updated transaction-ledger regression tests on macOS/Xcode, then fix ISS-018.
+
+## 2026-08-27 — ISS-018 backup review-state preservation
+Works: JSON backup export now preserves TransactionRecord pending, accepted, and review-reason state; restore reapplies all three fields. Legacy schema-version-1 payloads without these keys decode to safe model defaults and continue to pass checksum validation.
+Changed: Added legacy-aware Codable behavior to TransactionBackupDTO, mapped review state in DataExportService export/restore, and added focused in-memory SwiftData regressions for pending round-trip and legacy decode/default restore behavior.
+Evidence: evidence/export/iss-018/static-verification.txt; ExpenseManager/Core/Export/DataExportServiceProtocol.swift; ExpenseManager/Core/Export/DataExportService.swift; ExpenseManager/Tests/ExportTests/DataExportAndSecurityTests.swift.
+Open: ISS-019, ISS-020.
+Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
+Next: Build and run the export regression tests on macOS/Xcode, then fix ISS-019.

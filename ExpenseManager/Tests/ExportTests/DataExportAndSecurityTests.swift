@@ -255,6 +255,117 @@ final class DataExportAndSecurityTests: XCTestCase {
         XCTAssertEqual(restoredTxs.first?.amount, Decimal(45000))
         XCTAssertEqual(restoredTxs.first?.notes, "iPad Air M2 purchase")
     }
+
+    @MainActor
+    func testPendingReviewStateRoundTripsThroughJSONBackup() async throws {
+        try await dependencyContainer.categoryService.seedDefaultCategoriesIfNeeded()
+
+        let transactionID = UUID()
+        let pendingCandidate = TransactionCandidate(
+            id: transactionID,
+            type: .expense,
+            amount: Decimal(725),
+            currencyCode: "INR",
+            merchantName: "Unknown Merchant",
+            categorySuggestion: "Food & Dining",
+            source: .smartText,
+            confidence: ConfidenceScore(0.42),
+            needsReview: true,
+            warnings: ["Low confidence"]
+        )
+        try await dependencyContainer.transactionService.createTransaction(pendingCandidate)
+
+        let records = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        let pendingRecord = try XCTUnwrap(records.first(where: { $0.id == transactionID.uuidString }))
+        pendingRecord.reviewReasons = ["Low confidence", "Account not identified"]
+        try modelContainer.mainContext.save()
+
+        let backupData = try await exportService.exportJSONBackup()
+        let payload = try exportService.validateBackupPayload(backupData)
+        let exportedTransaction = try XCTUnwrap(payload.data.transactions.first)
+        XCTAssertTrue(exportedTransaction.isPendingReview)
+        XCTAssertFalse(exportedTransaction.isAccepted)
+        XCTAssertEqual(exportedTransaction.reviewReasons, ["Low confidence", "Account not identified"])
+
+        try await exportService.purgeAllData(restoreDefaultCategories: false)
+        _ = try await exportService.restoreJSONBackup(from: backupData)
+
+        let restoredRecords = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        let restoredRecord = try XCTUnwrap(restoredRecords.first(where: { $0.id == transactionID.uuidString }))
+        XCTAssertTrue(restoredRecord.isPendingReview)
+        XCTAssertFalse(restoredRecord.isAccepted)
+        XCTAssertEqual(restoredRecord.reviewReasons, ["Low confidence", "Account not identified"])
+    }
+
+    @MainActor
+    func testLegacyBackupWithoutReviewStateDefaultsSafely() async throws {
+        let timestamp = Date(timeIntervalSince1970: 1_730_000_000)
+        let legacyTransaction = TransactionBackupDTO(
+            id: "legacy-tx",
+            type: "expense",
+            amount: Decimal(250),
+            currencyCode: "INR",
+            merchantName: "Legacy Merchant",
+            categoryID: "legacy-category",
+            accountID: nil,
+            destinationAccountID: nil,
+            paymentMethod: nil,
+            transactionDate: timestamp,
+            notes: nil,
+            tags: [],
+            source: "manual",
+            sourceReference: nil,
+            confidence: 1.0,
+            createdAt: timestamp,
+            updatedAt: timestamp
+        )
+        let legacyData = BackupData(
+            categories: [
+                CategoryBackupDTO(
+                    id: "legacy-category",
+                    name: "Legacy",
+                    parentCategoryID: nil,
+                    icon: "tag.fill",
+                    colorToken: "blue",
+                    type: "expense",
+                    isSystem: false,
+                    sortOrder: 1
+                )
+            ],
+            transactions: [legacyTransaction],
+            importFingerprints: nil
+        )
+
+        let encoder = DataExportService.createJSONEncoder()
+        let legacyDataBytes = try encoder.encode(legacyData)
+        let legacyObject = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: legacyDataBytes) as? [String: Any]
+        )
+        let legacyTransactions = try XCTUnwrap(legacyObject["transactions"] as? [[String: Any]])
+        let legacyTransactionObject = try XCTUnwrap(legacyTransactions.first)
+        XCTAssertNil(legacyTransactionObject["isPendingReview"])
+        XCTAssertNil(legacyTransactionObject["isAccepted"])
+        XCTAssertNil(legacyTransactionObject["reviewReasons"])
+
+        let legacyPayload = BackupPayload(
+            checksum: DataExportService.computeSHA256(for: legacyDataBytes),
+            data: legacyData
+        )
+        let legacyPayloadData = try encoder.encode(legacyPayload)
+
+        let decodedPayload = try exportService.validateBackupPayload(legacyPayloadData)
+        let decodedTransaction = try XCTUnwrap(decodedPayload.data.transactions.first)
+        XCTAssertFalse(decodedTransaction.isPendingReview)
+        XCTAssertTrue(decodedTransaction.isAccepted)
+        XCTAssertTrue(decodedTransaction.reviewReasons.isEmpty)
+
+        _ = try await exportService.restoreJSONBackup(from: legacyPayloadData)
+        let restoredRecords = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        let restoredRecord = try XCTUnwrap(restoredRecords.first(where: { $0.id == "legacy-tx" }))
+        XCTAssertFalse(restoredRecord.isPendingReview)
+        XCTAssertTrue(restoredRecord.isAccepted)
+        XCTAssertTrue(restoredRecord.reviewReasons.isEmpty)
+    }
     
     // MARK: - 4. SHA-256 Tampering Detection Tests
     
