@@ -25,13 +25,22 @@ final class TransactionServiceProtocolTests: XCTestCase {
             merchantName: "Accepted Merchant",
             source: .manual
         )
-        let service: any TransactionServiceProtocol = MockTransactionService(sampleData: [pending, accepted])
+        let acceptedNonINR = TransactionCandidate(
+            type: .expense,
+            amount: Decimal(50),
+            currencyCode: "USD",
+            merchantName: "Accepted USD Merchant",
+            source: .manual
+        )
+        let service: any TransactionServiceProtocol = MockTransactionService(sampleData: [pending, accepted, acceptedNonINR])
 
         let pendingTransactions = try await service.fetchPendingReviewTransactions()
         XCTAssertEqual(pendingTransactions.map(\.id), [pending.id])
 
         let recentTransactions = try await service.fetchRecentTransactions(limit: 10)
-        XCTAssertEqual(recentTransactions.map(\.id), [accepted.id])
+        XCTAssertEqual(recentTransactions.count, 2)
+        XCTAssertTrue(recentTransactions.contains(where: { $0.id == accepted.id }))
+        XCTAssertTrue(recentTransactions.contains(where: { $0.id == acceptedNonINR.id }))
 
         let totals = try await service.calculateTotals(
             startDate: Date.distantPast,
@@ -39,12 +48,12 @@ final class TransactionServiceProtocolTests: XCTestCase {
             currencyCode: "INR"
         )
         XCTAssertEqual(totals.income, Decimal(1_000))
-        XCTAssertEqual(totals.expense, .zero)
+        XCTAssertEqual(totals.expense, .zero, "Accepted USD expenses must be excluded from INR totals")
 
         try await service.acceptTransaction(id: pending.id.uuidString)
         let pendingAfterAcceptance = try await service.fetchPendingReviewTransactions()
         XCTAssertTrue(pendingAfterAcceptance.isEmpty)
         let recentAfterAcceptance = try await service.fetchRecentTransactions(limit: 10)
-        XCTAssertEqual(recentAfterAcceptance.count, 2)
+        XCTAssertEqual(recentAfterAcceptance.count, 3)
     }
 }
