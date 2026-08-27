@@ -1,5 +1,13 @@
 Capabilities: Windows host environment — static code analysis, structural inspection, architecture verification, SwiftData schema audits. Local Swift compilation, Xcode build, and iOS Simulator runs are excluded (manual evidence gate on macOS/Xcode).
 
+## 2026-08-27 — Remediation follow-up
+Works: Static audit identified unresolved P0/P1 defects in the remediation commit.
+Changed: Added ISS-016 through ISS-020 to the issue ledger.
+Evidence: 2026-08-27 source review; iOS build remains a macOS/Xcode manual evidence gate.
+Open: ISS-016, ISS-017, ISS-018, ISS-019, ISS-020.
+Blocked: Runtime verification requires macOS/Xcode.
+Next: Fix ISS-016 build blockers.
+
 # Checkpoint Ledger
 
 ## 2026-08-26 — Phase 7: Evidence-backed quality gates and release validation Complete
@@ -250,3 +258,11 @@ Evidence: `evidence/transaction-services/iss-017/static-verification.txt`; `Expe
 Open: ISS-018, ISS-019, ISS-020.
 Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
 Next: Build and run the transaction-ledger regression tests on macOS/Xcode, then fix ISS-018.
+
+## 2026-08-27 — ISS-017 review follow-up
+Works: Transfer and cash-withdrawal legs now reject candidate-currency mismatches; legacy pending transfer/cash records fail closed before acceptance; ordinary accountless records remain editable; Cash resolution ignores archived and non-cash accounts named “Cash”.
+Changed: Centralized relationship and currency validation for create, update, and acceptance; expanded focused public-interface regressions for unaccepted deletion, rejected two-leg transfer updates, currency mismatches, legacy acceptance, accountless edits, and Cash account selection.
+Evidence: evidence/transaction-services/iss-017/static-verification.txt; ExpenseManager/Tests/FinancialEngineTests/TransactionLedgerInvariantTests.swift.
+Open: ISS-018, ISS-019, ISS-020.
+Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
+Next: Build and run the updated transaction-ledger regression tests on macOS/Xcode, then fix ISS-018.

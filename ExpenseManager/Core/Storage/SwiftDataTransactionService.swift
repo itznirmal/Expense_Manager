@@ -16,6 +16,8 @@ public enum TransactionServiceError: LocalizedError, Sendable {
     case transactionMissingSourceAccount
     case transferMissingDestination
     case transferSourceAndDestinationMustBeDistinct
+    case cashWithdrawalMissingCashAccount
+    case accountCurrencyMismatch(accountID: String, expectedCurrencyCode: String, actualCurrencyCode: String)
     
     public var errorDescription: String? {
         switch self {
@@ -29,6 +31,10 @@ public enum TransactionServiceError: LocalizedError, Sendable {
             return "Transfers require a valid destination account."
         case .transferSourceAndDestinationMustBeDistinct:
             return "Transfers require a valid and distinct destination account."
+        case .cashWithdrawalMissingCashAccount:
+            return "Cash withdrawals require an active Cash account as their destination."
+        case .accountCurrencyMismatch(let accountID, let expectedCurrencyCode, let actualCurrencyCode):
+            return "Account '\(accountID)' uses \(actualCurrencyCode), but the transaction uses \(expectedCurrencyCode)."
         }
     }
 }
@@ -103,24 +109,29 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         var resolvedDestinationAccount: AccountRecord?
 
         if candidate.type == .transfer {
-            guard let source = resolvedAccount else {
+            guard resolvedAccount != nil else {
                 throw TransactionServiceError.transactionMissingSourceAccount
             }
             guard let destination = try resolveAccount(for: candidate.destinationAccountSuggestion) else {
                 throw TransactionServiceError.transferMissingDestination
             }
-            if source.id == destination.id {
-                throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
-            }
             resolvedDestinationAccount = destination
         } else if candidate.type == .cashWithdrawal {
-            guard resolvedAccount != nil else {
+            guard let source = resolvedAccount else {
                 throw TransactionServiceError.transactionMissingSourceAccount
             }
+            try validateCurrency(of: source, expected: candidate.currencyCode)
             resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
         } else {
             resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
         }
+
+        try validateBalanceEffectRelationships(
+            for: candidate.type,
+            currencyCode: candidate.currencyCode,
+            account: resolvedAccount,
+            destinationAccount: resolvedDestinationAccount
+        )
 
         let isPending = candidate.needsReview
         
@@ -178,24 +189,33 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
 
         // Resolve and validate every replacement relationship before touching the old effect.
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
-        guard let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion) else {
-            throw TransactionServiceError.transactionMissingSourceAccount
-        }
+        let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion)
 
         var resolvedDestinationAccount: AccountRecord?
         if candidate.type == .transfer {
+            guard resolvedAccount != nil else {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
             guard let dest = try resolveAccount(for: candidate.destinationAccountSuggestion) else {
                 throw TransactionServiceError.transferMissingDestination
             }
-            if resolvedAccount.id == dest.id {
-                throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
-            }
             resolvedDestinationAccount = dest
         } else if candidate.type == .cashWithdrawal {
+            guard let source = resolvedAccount else {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
+            try validateCurrency(of: source, expected: candidate.currencyCode)
             resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
         } else {
             resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
         }
+
+        try validateBalanceEffectRelationships(
+            for: candidate.type,
+            currencyCode: candidate.currencyCode,
+            account: resolvedAccount,
+            destinationAccount: resolvedDestinationAccount
+        )
 
         let isPending = candidate.needsReview
 
@@ -241,6 +261,13 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             throw TransactionServiceError.transactionNotFound(id: id)
         }
         guard record.isPendingReview else { return }
+
+        try validateBalanceEffectRelationships(
+            for: record.transactionType,
+            currencyCode: record.currencyCode,
+            account: record.account,
+            destinationAccount: record.destinationAccount
+        )
         
         record.isPendingReview = false
         record.isAccepted = true
@@ -302,6 +329,55 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     }
     
     // MARK: - Private Balance Invariant Helpers
+
+    private func validateBalanceEffectRelationships(
+        for type: TransactionType,
+        currencyCode: String,
+        account: AccountRecord?,
+        destinationAccount: AccountRecord?
+    ) throws {
+        switch type {
+        case .transfer:
+            guard let source = account else {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
+            try validateCurrency(of: source, expected: currencyCode)
+
+            guard let destination = destinationAccount else {
+                throw TransactionServiceError.transferMissingDestination
+            }
+            guard source.id != destination.id else {
+                throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
+            }
+            try validateCurrency(of: destination, expected: currencyCode)
+
+        case .cashWithdrawal:
+            guard let source = account else {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
+            try validateCurrency(of: source, expected: currencyCode)
+
+            guard let destination = destinationAccount,
+                  destination.accountType == .cash,
+                  !destination.isArchived else {
+                throw TransactionServiceError.cashWithdrawalMissingCashAccount
+            }
+            try validateCurrency(of: destination, expected: currencyCode)
+
+        case .expense, .income, .refund, .unknown:
+            break
+        }
+    }
+
+    private func validateCurrency(of account: AccountRecord, expected currencyCode: String) throws {
+        guard account.currencyCode == currencyCode else {
+            throw TransactionServiceError.accountCurrencyMismatch(
+                accountID: account.id,
+                expectedCurrencyCode: currencyCode,
+                actualCurrencyCode: account.currencyCode
+            )
+        }
+    }
     
     private func applyBalanceEffect(
         for type: TransactionType,
@@ -421,8 +497,9 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         let descriptor = FetchDescriptor<AccountRecord>()
         let accounts = try modelContext.fetch(descriptor)
         if let cashAccount = accounts.first(where: {
-            $0.currencyCode == currencyCode &&
-            ($0.accountType == .cash || $0.name.localizedCaseInsensitiveCompare("Cash") == .orderedSame)
+            !$0.isArchived &&
+            $0.accountType == .cash &&
+            $0.currencyCode == currencyCode
         }) {
             return cashAccount
         }

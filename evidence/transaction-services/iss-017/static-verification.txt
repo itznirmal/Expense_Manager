@@ -7,9 +7,13 @@ Scope:
 
 Checks:
 - Pending-review deletion reverses no balance effect, including records marked not accepted.
-- Transaction update resolves and validates the replacement source, transfer destination, and cash destination before reversing the previous accepted effect.
+- Non-pending records marked unaccepted are also deleted without reversing a balance effect.
+- Transaction update resolves and validates the replacement source, transfer destination, and cash destination before reversing the previous accepted effect; rejected transfer edits preserve both account legs.
 - Transfer and cash-withdrawal creation rejects an unresolved source before inserting a record or creating a cash account.
-- Automatic cash resolution selects only a Cash account with the requested currency and creates that currency when none exists.
+- Transfer and cash-withdrawal creation/update reject every participating account whose currency differs from the candidate currency.
+- Automatic cash resolution selects only active AccountType.cash accounts with the requested currency, never by name alone, and creates that currency when none exists.
+- Legacy pending transfer and cash-withdrawal records are relationship- and currency-validated before acceptance or balance application.
+- Ordinary accountless records remain editable because only transfers and cash withdrawals require source accounts.
 - Focused tests exercise the service through TransactionServiceProtocol-facing public methods and AccountServiceProtocol-facing public methods.
 - Changed Swift files have balanced braces and `git diff --check` reports no whitespace errors.
 - Swift/Xcode build and XCTest execution: not run; no Swift toolchain is installed on this Windows host. macOS/Xcode remains the manual evidence gate.

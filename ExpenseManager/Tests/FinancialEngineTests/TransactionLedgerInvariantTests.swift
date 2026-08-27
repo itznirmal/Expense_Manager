@@ -16,6 +16,11 @@ final class TransactionLedgerInvariantTests: XCTestCase {
     private var accountService: SwiftDataAccountService!
 
     @MainActor
+    private var modelContext: ModelContext {
+        modelContainer.mainContext
+    }
+
+    @MainActor
     override func setUp() async throws {
         try await super.setUp()
         modelContainer = try DatabaseContainer.inMemory()
@@ -57,6 +62,34 @@ final class TransactionLedgerInvariantTests: XCTestCase {
     }
 
     @MainActor
+    func testDeletingNonPendingUnacceptedRecordDoesNotChangeBalance() async throws {
+        let accountID = try await makeAccount(name: "Legacy Bank", balance: 10_000, currencyCode: "INR")
+        let pending = TransactionCandidate(
+            type: .expense,
+            amount: 2_000,
+            currencyCode: "INR",
+            merchantName: "Legacy Expense",
+            accountSuggestion: accountID,
+            source: .sms,
+            needsReview: true
+        )
+
+        let transactionID = try await transactionService.createTransaction(pending)
+        let record = try XCTUnwrap(try fetchTransactionRecord(id: transactionID))
+        record.isPendingReview = false
+        record.isAccepted = false
+        try modelContext.save()
+
+        let balanceBeforeDelete = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balanceBeforeDelete, 10_000)
+        try await transactionService.deleteTransaction(id: transactionID)
+
+        let balanceAfterDelete = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balanceAfterDelete, 10_000)
+        XCTAssertNil(try fetchTransactionRecord(id: transactionID))
+    }
+
+    @MainActor
     func testInvalidUpdateLeavesAcceptedBalanceAndRecordUnchanged() async throws {
         let accountID = try await makeAccount(name: "Checking", balance: 10_000, currencyCode: "INR")
         let original = TransactionCandidate(
@@ -92,21 +125,56 @@ final class TransactionLedgerInvariantTests: XCTestCase {
     }
 
     @MainActor
-    func testInvalidTransferUpdateLeavesBothPriorBalancesUnchanged() async throws {
-        let sourceID = try await makeAccount(name: "Source", balance: 10_000, currencyCode: "INR")
-        let destinationID = try await makeAccount(name: "Destination", balance: 5_000, currencyCode: "INR")
+    func testOrdinaryAccountlessRecordRemainsEditable() async throws {
         let original = TransactionCandidate(
             type: .expense,
-            amount: 1_000,
+            amount: 2_000,
             currencyCode: "INR",
-            merchantName: "Original Expense",
-            accountSuggestion: sourceID,
+            merchantName: "Unassigned Expense",
             source: .manual
         )
         let transactionID = try await transactionService.createTransaction(original)
 
+        var replacement = original
+        replacement.type = .income
+        replacement.amount = 500
+        replacement.merchantName = "Unassigned Income"
+        try await transactionService.updateTransaction(id: transactionID, candidate: replacement)
+
+        let transactions = try await transactionService.fetchTransactions(
+            startDate: nil,
+            endDate: nil,
+            categoryID: nil,
+            accountID: nil
+        )
+        XCTAssertEqual(transactions.count, 1)
+        XCTAssertEqual(transactions.first?.type, .income)
+        XCTAssertEqual(transactions.first?.amount, 500)
+        XCTAssertEqual(transactions.first?.merchantName, "Unassigned Income")
+        XCTAssertNil(transactions.first?.accountSuggestion)
+    }
+
+    @MainActor
+    func testInvalidTransferUpdateLeavesBothPriorBalancesUnchanged() async throws {
+        let sourceID = try await makeAccount(name: "Source", balance: 10_000, currencyCode: "INR")
+        let destinationID = try await makeAccount(name: "Destination", balance: 5_000, currencyCode: "INR")
+        let original = TransactionCandidate(
+            type: .transfer,
+            amount: 1_000,
+            currencyCode: "INR",
+            merchantName: "Original Transfer",
+            accountSuggestion: sourceID,
+            destinationAccountSuggestion: destinationID,
+            source: .manual
+        )
+        let transactionID = try await transactionService.createTransaction(original)
+
+        let sourceBalanceAfterCreate = try await accountService.getAccount(id: sourceID)?.balance
+        let destinationBalanceAfterCreate = try await accountService.getAccount(id: destinationID)?.balance
+        XCTAssertEqual(sourceBalanceAfterCreate, 9_000)
+        XCTAssertEqual(destinationBalanceAfterCreate, 6_000)
+
         var missingDestination = original
-        missingDestination.type = .transfer
         missingDestination.destinationAccountSuggestion = "missing-destination"
         try await assertThrows {
             try await self.transactionService.updateTransaction(id: transactionID, candidate: missingDestination)
@@ -114,7 +182,7 @@ final class TransactionLedgerInvariantTests: XCTestCase {
         let sourceBalanceAfterMissingDestination = try await accountService.getAccount(id: sourceID)?.balance
         let destinationBalanceAfterMissingDestination = try await accountService.getAccount(id: destinationID)?.balance
         XCTAssertEqual(sourceBalanceAfterMissingDestination, 9_000)
-        XCTAssertEqual(destinationBalanceAfterMissingDestination, 5_000)
+        XCTAssertEqual(destinationBalanceAfterMissingDestination, 6_000)
 
         var sameAccountTransfer = original
         sameAccountTransfer.type = .transfer
@@ -125,7 +193,17 @@ final class TransactionLedgerInvariantTests: XCTestCase {
         let sourceBalanceAfterSameAccount = try await accountService.getAccount(id: sourceID)?.balance
         let destinationBalanceAfterSameAccount = try await accountService.getAccount(id: destinationID)?.balance
         XCTAssertEqual(sourceBalanceAfterSameAccount, 9_000)
-        XCTAssertEqual(destinationBalanceAfterSameAccount, 5_000)
+        XCTAssertEqual(destinationBalanceAfterSameAccount, 6_000)
+
+        var mismatchedCurrency = original
+        mismatchedCurrency.currencyCode = "USD"
+        try await assertThrows {
+            try await self.transactionService.updateTransaction(id: transactionID, candidate: mismatchedCurrency)
+        }
+        let sourceBalanceAfterCurrencyMismatch = try await accountService.getAccount(id: sourceID)?.balance
+        let destinationBalanceAfterCurrencyMismatch = try await accountService.getAccount(id: destinationID)?.balance
+        XCTAssertEqual(sourceBalanceAfterCurrencyMismatch, 9_000)
+        XCTAssertEqual(destinationBalanceAfterCurrencyMismatch, 6_000)
     }
 
     @MainActor
@@ -153,6 +231,19 @@ final class TransactionLedgerInvariantTests: XCTestCase {
         XCTAssertEqual(balanceAfterUpdate, 8_000)
         let accounts = try await accountService.fetchAccounts(includeArchived: true)
         XCTAssertFalse(accounts.contains { $0.type == .cash && $0.currencyCode == "INR" })
+
+        var mismatchedCurrency = original
+        mismatchedCurrency.type = .cashWithdrawal
+        mismatchedCurrency.amount = 1_000
+        mismatchedCurrency.currencyCode = "USD"
+        mismatchedCurrency.accountSuggestion = accountID
+        try await assertThrows {
+            try await self.transactionService.updateTransaction(id: transactionID, candidate: mismatchedCurrency)
+        }
+        let balanceAfterCurrencyMismatch = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balanceAfterCurrencyMismatch, 8_000)
+        let accountsAfterCurrencyMismatch = try await accountService.fetchAccounts(includeArchived: true)
+        XCTAssertFalse(accountsAfterCurrencyMismatch.contains { $0.type == .cash && $0.currencyCode == "USD" })
     }
 
     @MainActor
@@ -197,6 +288,84 @@ final class TransactionLedgerInvariantTests: XCTestCase {
     }
 
     @MainActor
+    func testTransferRejectsCurrencyMismatchOnEitherParticipatingAccount() async throws {
+        let inrSourceID = try await makeAccount(name: "INR Source", balance: 10_000, currencyCode: "INR")
+        let usdDestinationID = try await makeAccount(name: "USD Destination", balance: 5_000, currencyCode: "USD")
+        let destinationMismatch = TransactionCandidate(
+            type: .transfer,
+            amount: 1_000,
+            currencyCode: "INR",
+            merchantName: "Cross Currency Transfer",
+            accountSuggestion: inrSourceID,
+            destinationAccountSuggestion: usdDestinationID,
+            source: .manual
+        )
+        try await assertThrows {
+            try await self.transactionService.createTransaction(destinationMismatch)
+        }
+
+        let usdSourceID = try await makeAccount(name: "USD Source", balance: 8_000, currencyCode: "USD")
+        let inrDestinationID = try await makeAccount(name: "INR Destination", balance: 4_000, currencyCode: "INR")
+        let sourceMismatch = TransactionCandidate(
+            type: .transfer,
+            amount: 1_000,
+            currencyCode: "INR",
+            merchantName: "Cross Currency Transfer",
+            accountSuggestion: usdSourceID,
+            destinationAccountSuggestion: inrDestinationID,
+            source: .manual
+        )
+        try await assertThrows {
+            try await self.transactionService.createTransaction(sourceMismatch)
+        }
+
+        let inrSourceBalance = try await accountService.getAccount(id: inrSourceID)?.balance
+        let usdDestinationBalance = try await accountService.getAccount(id: usdDestinationID)?.balance
+        let usdSourceBalance = try await accountService.getAccount(id: usdSourceID)?.balance
+        let inrDestinationBalance = try await accountService.getAccount(id: inrDestinationID)?.balance
+        XCTAssertEqual(inrSourceBalance, 10_000)
+        XCTAssertEqual(usdDestinationBalance, 5_000)
+        XCTAssertEqual(usdSourceBalance, 8_000)
+        XCTAssertEqual(inrDestinationBalance, 4_000)
+        let transactions = try await transactionService.fetchTransactions(
+            startDate: nil,
+            endDate: nil,
+            categoryID: nil,
+            accountID: nil
+        )
+        XCTAssertTrue(transactions.isEmpty)
+    }
+
+    @MainActor
+    func testCashWithdrawalRejectsSourceCurrencyMismatchBeforeCreatingCashAccount() async throws {
+        let sourceID = try await makeAccount(name: "INR Bank", balance: 10_000, currencyCode: "INR")
+        let withdrawal = TransactionCandidate(
+            type: .cashWithdrawal,
+            amount: 1_000,
+            currencyCode: "USD",
+            merchantName: "USD ATM",
+            accountSuggestion: sourceID,
+            source: .manual
+        )
+
+        try await assertThrows {
+            try await self.transactionService.createTransaction(withdrawal)
+        }
+
+        let sourceBalance = try await accountService.getAccount(id: sourceID)?.balance
+        XCTAssertEqual(sourceBalance, 10_000)
+        let accounts = try await accountService.fetchAccounts(includeArchived: true)
+        XCTAssertFalse(accounts.contains { $0.type == .cash && $0.currencyCode == "USD" })
+        let transactions = try await transactionService.fetchTransactions(
+            startDate: nil,
+            endDate: nil,
+            categoryID: nil,
+            accountID: nil
+        )
+        XCTAssertTrue(transactions.isEmpty)
+    }
+
+    @MainActor
     func testCashWithdrawalUsesCashAccountMatchingTransactionCurrency() async throws {
         let bankID = try await makeAccount(name: "INR Bank", balance: 10_000, currencyCode: "INR")
         _ = try await makeAccount(name: "USD Cash", type: .cash, balance: 700, currencyCode: "USD")
@@ -229,6 +398,121 @@ final class TransactionLedgerInvariantTests: XCTestCase {
         XCTAssertEqual(usdCash?.balance, 700)
         XCTAssertEqual(inrCash?.balance, 1_750)
         XCTAssertEqual(accounts.filter { $0.type == .cash }.count, 2)
+    }
+
+    @MainActor
+    func testCashWithdrawalIgnoresArchivedAndNonCashAccountsNamedCash() async throws {
+        let sourceID = try await makeAccount(name: "INR Bank", balance: 10_000, currencyCode: "INR")
+        let misleadingCashID = try await makeAccount(name: "Cash", type: .bank, balance: 400, currencyCode: "INR")
+        let archivedCashID = try await makeAccount(name: "Archived Wallet", type: .cash, balance: 700, currencyCode: "INR")
+        try await accountService.setArchived(accountID: archivedCashID, isArchived: true)
+
+        let withdrawal = TransactionCandidate(
+            type: .cashWithdrawal,
+            amount: 1_250,
+            currencyCode: "INR",
+            merchantName: "INR ATM",
+            accountSuggestion: sourceID,
+            source: .manual
+        )
+        try await transactionService.createTransaction(withdrawal)
+
+        let sourceBalance = try await accountService.getAccount(id: sourceID)?.balance
+        let misleadingCashBalance = try await accountService.getAccount(id: misleadingCashID)?.balance
+        let archivedCashBalance = try await accountService.getAccount(id: archivedCashID)?.balance
+        XCTAssertEqual(sourceBalance, 8_750)
+        XCTAssertEqual(misleadingCashBalance, 400)
+        XCTAssertEqual(archivedCashBalance, 700)
+
+        let accounts = try await accountService.fetchAccounts(includeArchived: true)
+        let activeINRCashAccounts = accounts.filter {
+            $0.type == .cash && $0.currencyCode == "INR" && !$0.isArchived
+        }
+        XCTAssertEqual(activeINRCashAccounts.count, 1)
+        XCTAssertEqual(activeINRCashAccounts.first?.balance, 1_250)
+    }
+
+    @MainActor
+    func testAcceptRejectsLegacyPendingTransferCurrencyMismatchWithoutMutation() async throws {
+        let sourceID = try await makeAccount(name: "INR Source", balance: 10_000, currencyCode: "INR")
+        let destinationID = try await makeAccount(name: "USD Destination", balance: 5_000, currencyCode: "USD")
+        let transactionID = try insertLegacyPendingTransaction(
+            type: .transfer,
+            amount: 1_000,
+            currencyCode: "INR",
+            accountID: sourceID,
+            destinationAccountID: destinationID
+        )
+
+        try await assertThrows {
+            try await self.transactionService.acceptTransaction(id: transactionID)
+        }
+
+        let sourceBalance = try await accountService.getAccount(id: sourceID)?.balance
+        let destinationBalance = try await accountService.getAccount(id: destinationID)?.balance
+        let record = try fetchTransactionRecord(id: transactionID)
+        XCTAssertEqual(sourceBalance, 10_000)
+        XCTAssertEqual(destinationBalance, 5_000)
+        XCTAssertEqual(record?.isPendingReview, true)
+        XCTAssertEqual(record?.isAccepted, false)
+    }
+
+    @MainActor
+    func testAcceptRejectsLegacyPendingCashCurrencyMismatchWithoutMutation() async throws {
+        let sourceID = try await makeAccount(name: "INR Bank", balance: 10_000, currencyCode: "INR")
+        let cashID = try await makeAccount(name: "USD Cash", type: .cash, balance: 700, currencyCode: "USD")
+        let transactionID = try insertLegacyPendingTransaction(
+            type: .cashWithdrawal,
+            amount: 1_000,
+            currencyCode: "INR",
+            accountID: sourceID,
+            destinationAccountID: cashID
+        )
+
+        try await assertThrows {
+            try await self.transactionService.acceptTransaction(id: transactionID)
+        }
+
+        let sourceBalance = try await accountService.getAccount(id: sourceID)?.balance
+        let cashBalance = try await accountService.getAccount(id: cashID)?.balance
+        let record = try fetchTransactionRecord(id: transactionID)
+        XCTAssertEqual(sourceBalance, 10_000)
+        XCTAssertEqual(cashBalance, 700)
+        XCTAssertEqual(record?.isPendingReview, true)
+        XCTAssertEqual(record?.isAccepted, false)
+    }
+
+    @MainActor
+    private func fetchTransactionRecord(id: String) throws -> TransactionRecord? {
+        let records = try modelContext.fetch(FetchDescriptor<TransactionRecord>())
+        return records.first { $0.id == id }
+    }
+
+    @MainActor
+    private func insertLegacyPendingTransaction(
+        type: TransactionType,
+        amount: Decimal,
+        currencyCode: String,
+        accountID: String?,
+        destinationAccountID: String?
+    ) throws -> String {
+        let accounts = try modelContext.fetch(FetchDescriptor<AccountRecord>())
+        let account = accountID.flatMap { id in accounts.first { $0.id == id } }
+        let destinationAccount = destinationAccountID.flatMap { id in accounts.first { $0.id == id } }
+        let record = TransactionRecord(
+            type: type,
+            amount: amount,
+            currencyCode: currencyCode,
+            merchantName: "Legacy Pending",
+            account: account,
+            destinationAccount: destinationAccount,
+            source: .manual
+        )
+        record.isPendingReview = true
+        record.isAccepted = false
+        modelContext.insert(record)
+        try modelContext.save()
+        return record.id
     }
 
     @MainActor
