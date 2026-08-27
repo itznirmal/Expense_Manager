@@ -1,0 +1,15 @@
+ISS-017 static verification — 2026-08-27
+
+Scope:
+- ExpenseManager/Core/Storage/SwiftDataTransactionService.swift
+- ExpenseManager/Tests/FinancialEngineTests/TransactionLedgerInvariantTests.swift
+- ExpenseManager/Tests/FinancialEngineTests/FinancialEngineTests.swift (single pre-existing unmatched-brace repair)
+
+Checks:
+- Pending-review deletion reverses no balance effect, including records marked not accepted.
+- Transaction update resolves and validates the replacement source, transfer destination, and cash destination before reversing the previous accepted effect.
+- Transfer and cash-withdrawal creation rejects an unresolved source before inserting a record or creating a cash account.
+- Automatic cash resolution selects only a Cash account with the requested currency and creates that currency when none exists.
+- Focused tests exercise the service through TransactionServiceProtocol-facing public methods and AccountServiceProtocol-facing public methods.
+- Changed Swift files have balanced braces and `git diff --check` reports no whitespace errors.
+- Swift/Xcode build and XCTest execution: not run; no Swift toolchain is installed on this Windows host. macOS/Xcode remains the manual evidence gate.

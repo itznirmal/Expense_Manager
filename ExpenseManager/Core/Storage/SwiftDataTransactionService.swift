@@ -13,6 +13,7 @@ import SwiftData
 public enum TransactionServiceError: LocalizedError, Sendable {
     case transactionNotFound(id: String)
     case contextSaveFailed(String)
+    case transactionMissingSourceAccount
     case transferMissingDestination
     case transferSourceAndDestinationMustBeDistinct
     
@@ -22,6 +23,8 @@ public enum TransactionServiceError: LocalizedError, Sendable {
             return "Transaction with identifier '\(id)' was not found."
         case .contextSaveFailed(let message):
             return "Failed to save transaction data: \(message)"
+        case .transactionMissingSourceAccount:
+            return "Transactions requiring a balance effect must have a valid source account."
         case .transferMissingDestination:
             return "Transfers require a valid destination account."
         case .transferSourceAndDestinationMustBeDistinct:
@@ -97,19 +100,28 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         let normalizedAmount = abs(candidate.amount)
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
         let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion)
-        var resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
-        
+        var resolvedDestinationAccount: AccountRecord?
+
         if candidate.type == .transfer {
-            guard let dest = resolvedDestinationAccount else {
+            guard let source = resolvedAccount else {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
+            guard let destination = try resolveAccount(for: candidate.destinationAccountSuggestion) else {
                 throw TransactionServiceError.transferMissingDestination
             }
-            if resolvedAccount?.id == dest.id {
+            if source.id == destination.id {
                 throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
             }
+            resolvedDestinationAccount = destination
         } else if candidate.type == .cashWithdrawal {
+            guard resolvedAccount != nil else {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
             resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
+        } else {
+            resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
         }
-        
+
         let isPending = candidate.needsReview
         
         let record = TransactionRecord(
@@ -162,30 +174,35 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         let oldAmount = record.amount
         let oldAccount = record.account
         let oldDestAccount = record.destinationAccount
-        let wasPending = record.isPendingReview
-        
-        // 1. Roll back old balance effect (only if it was accepted)
-        if !wasPending {
-            rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
-        }
-        
-        // 2. Resolve new relationships
+        let hadAcceptedEffect = record.isAccepted && !record.isPendingReview
+
+        // Resolve and validate every replacement relationship before touching the old effect.
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
-        let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion)
-        var resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
-        
+        guard let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion) else {
+            throw TransactionServiceError.transactionMissingSourceAccount
+        }
+
+        var resolvedDestinationAccount: AccountRecord?
         if candidate.type == .transfer {
-            guard let dest = resolvedDestinationAccount else {
+            guard let dest = try resolveAccount(for: candidate.destinationAccountSuggestion) else {
                 throw TransactionServiceError.transferMissingDestination
             }
-            if resolvedAccount?.id == dest.id {
+            if resolvedAccount.id == dest.id {
                 throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
             }
+            resolvedDestinationAccount = dest
         } else if candidate.type == .cashWithdrawal {
             resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
+        } else {
+            resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
         }
-        
+
         let isPending = candidate.needsReview
+
+        // Reverse the old balance effect only after replacement validation succeeds.
+        if hadAcceptedEffect {
+            rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
+        }
         
         // 3. Update record properties
         record.transactionType = candidate.type
@@ -247,10 +264,8 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         let oldAmount = record.amount
         let oldAccount = record.account
         let oldDestAccount = record.destinationAccount
-        let wasPending = record.isPendingReview
-        
         // Roll back balance effect prior to deletion ONLY if it was accepted
-        if !wasPending {
+        if record.isAccepted && !record.isPendingReview {
             rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
         }
         
@@ -405,7 +420,10 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     private func resolveCashAccount(currencyCode: String) throws -> AccountRecord {
         let descriptor = FetchDescriptor<AccountRecord>()
         let accounts = try modelContext.fetch(descriptor)
-        if let cashAccount = accounts.first(where: { $0.accountType == .cash || $0.name.localizedCaseInsensitiveCompare("Cash") == .orderedSame }) {
+        if let cashAccount = accounts.first(where: {
+            $0.currencyCode == currencyCode &&
+            ($0.accountType == .cash || $0.name.localizedCaseInsensitiveCompare("Cash") == .orderedSame)
+        }) {
             return cashAccount
         }
         

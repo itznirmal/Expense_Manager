@@ -632,6 +632,7 @@ final class FinancialEngineTests: XCTestCase {
         
         let updatedAccount = try await accountService.getAccount(id: accountId)
         XCTAssertEqual(updatedAccount?.balance, Decimal(6000), "Updating with negative amount must normalize and result in 10,000 - 4,000 = 6,000")
+    }
     
     // MARK: - 15. Pending-Review Transaction Lifecycle
     

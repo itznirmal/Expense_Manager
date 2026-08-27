@@ -242,3 +242,11 @@ Evidence: `evidence/transaction-services/iss-016/static-verification.txt`; `Expe
 Open: ISS-017, ISS-018, ISS-019, ISS-020.
 Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
 Next: Build and run the transaction-service regression test on macOS/Xcode, then fix ISS-017.
+
+## 2026-08-27 — ISS-017 Transaction ledger invariants repaired
+Works: Pending-review deletion leaves account balances unchanged; invalid transaction replacements leave the prior accepted effect and record intact; transfers and cash withdrawals reject unresolved sources; Cash accounts are resolved or created only in the transaction currency.
+Changed: Validated update relationships before reversing the old accepted effect, made deletion reverse only accepted non-pending records, added source validation, and added focused financial-engine regression tests.
+Evidence: `evidence/transaction-services/iss-017/static-verification.txt`; `ExpenseManager/Tests/FinancialEngineTests/TransactionLedgerInvariantTests.swift`.
+Open: ISS-018, ISS-019, ISS-020.
+Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
+Next: Build and run the transaction-ledger regression tests on macOS/Xcode, then fix ISS-018.

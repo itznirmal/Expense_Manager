@@ -19,6 +19,7 @@
 | ISS-015 | P2 | CSV Formula Sanitizer | Space-padded formula trigger bypass risk | REVIEW_REPORT.md Cluster 4 | AC-SEC-1 / GT-58 | FIXED | Trimmed leading whitespace before checking formula triggers (=, +, -, @, \t, \r) |
 
 | ISS-016 | P0 | Transaction services | Remediation introduced non-compiling service references, shorthand closures, and incomplete mock protocol conformance | evidence/transaction-services/iss-016/static-verification.txt; ExpenseManager/Tests/FoundationTests/TransactionServiceProtocolTests.swift | AC-ARCH-2 / AC-PARSE-3 | FIXED | Replaced invalid closure shorthand and stale candidate state references; completed mock protocol conformance and added focused regression coverage. Swift/Xcode execution remains unverified on Windows. |
+| ISS-017 | P1 | Transaction ledger | Pending review discard and invalid edit paths corrupt account balances; transfer/cash source and currency validation incomplete | evidence/transaction-services/iss-017/static-verification.txt; ExpenseManager/Tests/FinancialEngineTests/TransactionLedgerInvariantTests.swift | AC-FIN-2 / AC-FIN-3 / AC-PARSE-3 | FIXED | Pending deletion is balance-neutral; replacement validation precedes accepted-effect reversal; transfers and cash withdrawals require resolved sources; cash resolution is currency-scoped. Swift/Xcode execution remains unverified on Windows. |
 
 ---
 **Status Update - 2026-08-26 (Phase 7 Completion)**: Zero open defects. All quality bar criteria and release gates have been thoroughly verified and resolved. System is cleared for production release.
