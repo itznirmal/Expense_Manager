@@ -44,6 +44,7 @@ final class DuplicatePreventionTests: XCTestCase {
         let hash = ImportFingerprintService.computeSourceHash(
             amount: amount,
             merchant: merchant,
+            accountLastFour: "4321",
             timestamp: timestamp,
             reference: ref
         )
@@ -66,6 +67,30 @@ final class DuplicatePreventionTests: XCTestCase {
         // Subsequent state: duplicate detected
         let hasHashAfter = try await mockFingerprintService.hasFingerprint(hash: hash)
         XCTAssertTrue(hasHashAfter)
+    }
+
+    func testExactHashIncludesAccountIdentity() {
+        let timestamp = Date()
+        let firstAccountHash = ImportFingerprintService.computeSourceHash(
+            amount: Decimal(520),
+            merchant: "Swiggy",
+            accountLastFour: "4321",
+            timestamp: timestamp,
+            reference: "REF-1"
+        )
+        let secondAccountHash = ImportFingerprintService.computeSourceHash(
+            amount: Decimal(520),
+            merchant: "Swiggy",
+            accountLastFour: "9876",
+            timestamp: timestamp,
+            reference: "REF-1"
+        )
+
+        XCTAssertNotEqual(
+            firstAccountHash,
+            secondAccountHash,
+            "The exact fingerprint must distinguish otherwise identical events from different accounts."
+        )
     }
     
     // MARK: - Time Window (5-Minute) Duplicate Prevention

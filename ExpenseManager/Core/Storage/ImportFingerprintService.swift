@@ -133,10 +133,15 @@ public final class ImportFingerprintService: ImportFingerprintServiceProtocol, S
     public static func computeSourceHash(
         amount: Decimal,
         merchant: String,
+        accountLastFour: String? = nil,
         timestamp: Date,
         reference: String?
     ) -> String {
-        let payload = "\(amount.description)|\(merchant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))|\(Int(timestamp.timeIntervalSince1970))|\(reference ?? "")"
+        let normalizedMerchant = merchant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedAccountLastFour = accountLastFour?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        let payload = "\(amount.description)|\(normalizedMerchant)|\(normalizedAccountLastFour)|\(Int(timestamp.timeIntervalSince1970))|\(reference ?? "")"
         let digest = SHA256.hash(data: Data(payload.utf8))
         return digest.compactMap { String(format: "%02x", $0) }.joined()
     }

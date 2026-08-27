@@ -836,4 +836,200 @@ final class FinancialEngineTests: XCTestCase {
         let transactions = try await transactionService.fetchTransactions(startDate: now.addingTimeInterval(-10), endDate: now.addingTimeInterval(10), categoryID: nil, accountID: accountId)
         XCTAssertEqual(transactions.count, 1, "Exactly 1 transaction must be created")
     }
+
+    // MARK: - 18. Atomic Transaction + Fingerprint Persistence (ISS-019)
+
+    @MainActor
+    func testAtomicImportPersistsOneTransactionAndFingerprintAndRejectsDuplicate() async throws {
+        let accountID = try await accountService.createAccount(
+            name: "Atomic Import Bank",
+            type: .bank,
+            openingBalance: Decimal(10_000),
+            currencyCode: "INR",
+            icon: "bank",
+            colorToken: "blue",
+            lastFour: "1234"
+        )
+        let timestamp = Date()
+        let candidate = TransactionCandidate(
+            id: UUID(),
+            type: .expense,
+            amount: Decimal(450),
+            currencyCode: "INR",
+            merchantName: "Atomic Merchant",
+            accountSuggestion: accountID,
+            transactionDate: timestamp,
+            source: .sms,
+            sourceReference: "ATOMIC-1"
+        )
+        let sourceHash = ImportFingerprintService.computeSourceHash(
+            amount: candidate.amount,
+            merchant: candidate.merchantName,
+            accountLastFour: "1234",
+            timestamp: candidate.transactionDate,
+            reference: candidate.sourceReference
+        )
+
+        let firstResult = try await transactionService.createTransactionAndFingerprint(
+            candidate,
+            sourceHash: sourceHash,
+            accountLastFour: "1234",
+            source: "sms"
+        )
+        XCTAssertEqual(firstResult, .saved(transactionID: candidate.id.uuidString))
+
+        let transactionRecords = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        let fingerprintRecords = try modelContainer.mainContext.fetch(FetchDescriptor<ImportFingerprintRecord>())
+        XCTAssertEqual(transactionRecords.count, 1)
+        XCTAssertEqual(fingerprintRecords.count, 1)
+        XCTAssertEqual(fingerprintRecords.first?.sourceHash, sourceHash)
+        XCTAssertEqual(fingerprintRecords.first?.accountLastFour, "1234")
+
+        let duplicateResult = try await transactionService.createTransactionAndFingerprint(
+            candidate,
+            sourceHash: sourceHash,
+            accountLastFour: "1234",
+            source: "sms"
+        )
+        XCTAssertEqual(duplicateResult, .duplicate)
+
+        let transactionCountAfterDuplicate = try modelContainer.mainContext.fetch(
+            FetchDescriptor<TransactionRecord>()
+        ).count
+        let fingerprintCountAfterDuplicate = try modelContainer.mainContext.fetch(
+            FetchDescriptor<ImportFingerprintRecord>()
+        ).count
+        XCTAssertEqual(transactionCountAfterDuplicate, 1)
+        XCTAssertEqual(fingerprintCountAfterDuplicate, 1)
+        let balanceAfterDuplicate = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balanceAfterDuplicate, Decimal(9_550))
+    }
+
+    @MainActor
+    func testAtomicImportRollsBackBothRecordsWhenTransactionSaveFails() async throws {
+        let accountID = try await accountService.createAccount(
+            name: "Atomic Rollback Bank",
+            type: .bank,
+            openingBalance: Decimal(10_000),
+            currencyCode: "INR",
+            icon: "bank",
+            colorToken: "blue",
+            lastFour: "1234"
+        )
+        let timestamp = Date()
+        let candidateID = UUID()
+        let firstCandidate = TransactionCandidate(
+            id: candidateID,
+            type: .expense,
+            amount: Decimal(450),
+            currencyCode: "INR",
+            merchantName: "First Merchant",
+            accountSuggestion: accountID,
+            transactionDate: timestamp,
+            source: .sms,
+            sourceReference: "ROLLBACK-1"
+        )
+        let firstHash = ImportFingerprintService.computeSourceHash(
+            amount: firstCandidate.amount,
+            merchant: firstCandidate.merchantName,
+            accountLastFour: "1234",
+            timestamp: firstCandidate.transactionDate,
+            reference: firstCandidate.sourceReference
+        )
+        let firstResult = try await transactionService.createTransactionAndFingerprint(
+            firstCandidate,
+            sourceHash: firstHash,
+            accountLastFour: "1234",
+            source: "sms"
+        )
+        XCTAssertEqual(firstResult, .saved(transactionID: candidateID.uuidString))
+
+        let conflictingCandidate = TransactionCandidate(
+            id: candidateID,
+            type: .expense,
+            amount: Decimal(700),
+            currencyCode: "INR",
+            merchantName: "Second Merchant",
+            accountSuggestion: accountID,
+            transactionDate: timestamp.addingTimeInterval(3_600),
+            source: .sms,
+            sourceReference: "ROLLBACK-2"
+        )
+        let conflictingHash = ImportFingerprintService.computeSourceHash(
+            amount: conflictingCandidate.amount,
+            merchant: conflictingCandidate.merchantName,
+            accountLastFour: "1234",
+            timestamp: conflictingCandidate.transactionDate,
+            reference: conflictingCandidate.sourceReference
+        )
+
+        do {
+            _ = try await transactionService.createTransactionAndFingerprint(
+                conflictingCandidate,
+                sourceHash: conflictingHash,
+                accountLastFour: "1234",
+                source: "sms"
+            )
+            XCTFail("A duplicate transaction identifier must fail the atomic save.")
+        } catch {
+            // Expected: the transaction's unique identifier conflicts with the first record.
+        }
+
+        let transactionRecords = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        let fingerprintRecords = try modelContainer.mainContext.fetch(FetchDescriptor<ImportFingerprintRecord>())
+        XCTAssertEqual(transactionRecords.count, 1)
+        XCTAssertEqual(fingerprintRecords.count, 1)
+        XCTAssertFalse(fingerprintRecords.contains { $0.sourceHash == conflictingHash })
+        let balanceAfterFailure = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balanceAfterFailure, Decimal(9_550))
+    }
+
+    @MainActor
+    func testSMSOrchestratorMapsAtomicDuplicateToDuplicateResult() async throws {
+        _ = try await accountService.createAccount(
+            name: "HDFC Bank",
+            type: .bank,
+            openingBalance: Decimal(10_000),
+            currencyCode: "INR",
+            icon: "bank",
+            colorToken: "blue",
+            lastFour: "4321"
+        )
+        let orchestrator = SMSIngestionOrchestrator(
+            transactionService: transactionService,
+            fingerprintService: fingerprintService
+        )
+        let sms = "HDFC Bank: Rs 520.00 debited from a/c **4321 on 25-AUG-26 to VPA swiggy@upi (UPI Ref no ATOMIC-SMS-1). Avl bal: Rs 9,480.00"
+        let referenceDate = Date()
+
+        let firstResult = try await orchestrator.ingest(
+            smsText: sms,
+            autoSaveIfEligible: true,
+            referenceDate: referenceDate
+        )
+        guard case .saved = firstResult else {
+            XCTFail("The first SMS import must be saved, got \(firstResult)")
+            return
+        }
+
+        let secondResult = try await orchestrator.ingest(
+            smsText: sms,
+            autoSaveIfEligible: true,
+            referenceDate: referenceDate
+        )
+        guard case .duplicate(let reason, _) = secondResult else {
+            XCTFail("The second SMS import must map to duplicate, got \(secondResult)")
+            return
+        }
+        XCTAssertTrue(reason.localizedCaseInsensitiveContains("duplicate"))
+
+        XCTAssertEqual(
+            try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>()).count,
+            1
+        )
+        XCTAssertEqual(
+            try modelContainer.mainContext.fetch(FetchDescriptor<ImportFingerprintRecord>()).count,
+            1
+        )
+    }
 }

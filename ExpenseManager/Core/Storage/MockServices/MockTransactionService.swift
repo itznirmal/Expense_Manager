@@ -9,7 +9,17 @@
 import Foundation
 
 public final class MockTransactionService: TransactionServiceProtocol, @unchecked Sendable {
+    private struct ImportedFingerprint {
+        let sourceHash: String
+        let amount: Decimal
+        let merchant: String
+        let accountLastFour: String?
+        let reference: String?
+        let timestamp: Date
+    }
+
     private var transactions: [TransactionCandidate] = []
+    private var importedFingerprints: [ImportedFingerprint] = []
     private let lock = NSLock()
     
     public init(sampleData: [TransactionCandidate]? = nil) {
@@ -62,6 +72,67 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
         normalized.amount = abs(candidate.amount)
         transactions.append(normalized)
         return normalized.id.uuidString
+    }
+
+    public func createTransactionAndFingerprint(
+        _ candidate: TransactionCandidate,
+        sourceHash: String,
+        accountLastFour: String?,
+        source: String
+    ) async throws -> TransactionImportResult {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let amount = abs(candidate.amount)
+        let normalizedMerchant = candidate.merchantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let windowStart = candidate.transactionDate.addingTimeInterval(-300)
+        let windowEnd = candidate.transactionDate.addingTimeInterval(300)
+        let isDuplicate = importedFingerprints.contains { fingerprint in
+            if fingerprint.sourceHash == sourceHash {
+                return true
+            }
+            if let reference = candidate.sourceReference,
+               let existingReference = fingerprint.reference,
+               !reference.isEmpty,
+               reference == existingReference {
+                return true
+            }
+            guard fingerprint.amount == amount,
+                  fingerprint.timestamp >= windowStart,
+                  fingerprint.timestamp <= windowEnd else {
+                return false
+            }
+            let existingMerchant = fingerprint.merchant.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let merchantMatches = existingMerchant == normalizedMerchant ||
+                existingMerchant.contains(normalizedMerchant) ||
+                normalizedMerchant.contains(existingMerchant)
+            guard merchantMatches else { return false }
+
+            if let accountLastFour,
+               let existingAccountLastFour = fingerprint.accountLastFour {
+                return accountLastFour == existingAccountLastFour
+            }
+            return true
+        }
+
+        if isDuplicate {
+            return .duplicate
+        }
+
+        var normalized = candidate
+        normalized.amount = amount
+        transactions.append(normalized)
+        importedFingerprints.append(
+            ImportedFingerprint(
+                sourceHash: sourceHash,
+                amount: amount,
+                merchant: candidate.merchantName,
+                accountLastFour: accountLastFour,
+                reference: candidate.sourceReference,
+                timestamp: candidate.transactionDate
+            )
+        )
+        return .saved(transactionID: normalized.id.uuidString)
     }
     
     public func updateTransaction(id: String, candidate: TransactionCandidate) async throws {

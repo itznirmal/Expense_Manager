@@ -282,3 +282,11 @@ Evidence: evidence/export/iss-018/static-verification.txt; ExpenseManager/Core/E
 Open: ISS-019, ISS-020.
 Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
 Next: Build and run the export regression tests on macOS/Xcode, then fix ISS-019.
+
+## 2026-08-27 — ISS-019 atomic SMS import persistence
+Works: SMS imports now use a typed transaction-service operation that checks duplicate fingerprints, inserts the transaction and ImportFingerprintRecord into the live SwiftData main context, and saves once. Save failures roll back both records and map a concurrent source-hash winner to a duplicate result. Exact source hashes now include normalized account last-four identity, and the orchestrator passes the parsed account mask through the hash and atomic persistence path.
+Changed: Added the atomic operation to TransactionServiceProtocol, extracted the no-save transaction insertion helper in SwiftDataTransactionService, implemented the same duplicate outcome in MockTransactionService, updated SMSIngestionOrchestrator, and added account/hash plus in-memory persistence regressions.
+Evidence: evidence/transaction-services/iss-019/static-verification.txt; ExpenseManager/Tests/FinancialEngineTests/FinancialEngineTests.swift; ExpenseManager/Tests/SMSParsingTests/DuplicatePreventionTests.swift.
+Open: ISS-020.
+Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
+Next: Build and run the SMS atomic-ingestion and duplicate regressions on macOS/Xcode, then fix ISS-020.

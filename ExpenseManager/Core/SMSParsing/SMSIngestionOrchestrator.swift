@@ -86,6 +86,7 @@ public final class SMSIngestionOrchestrator: Sendable {
         let sourceHash = ImportFingerprintService.computeSourceHash(
             amount: draft.amount,
             merchant: draft.merchantName,
+            accountLastFour: accountMaskVal,
             timestamp: draft.transactionDate,
             reference: draft.referenceNumber
         )
@@ -143,38 +144,40 @@ public final class SMSIngestionOrchestrator: Sendable {
         
         // Step 6: Execution (Auto-Save or Review Queue)
         if autoSaveIfEligible && confidenceEval.isAutoSaveEligible, let txnSvc = transactionService {
-            let savedID = try await txnSvc.createTransaction(candidate)
-            
-            // Record fingerprint
-            try await fingerprintService?.recordFingerprint(
+            let persistenceResult = try await txnSvc.createTransactionAndFingerprint(
+                candidate,
                 sourceHash: sourceHash,
-                amount: candidate.amount,
-                merchant: candidate.merchantName,
                 accountLastFour: accountMaskVal,
-                reference: candidate.sourceReference,
-                timestamp: candidate.transactionDate,
                 source: "sms"
             )
-            
-            return .saved(candidate: candidate, transactionID: savedID)
+            switch persistenceResult {
+            case .saved(let transactionID):
+                return .saved(candidate: candidate, transactionID: transactionID)
+            case .duplicate:
+                return .duplicate(
+                    reason: "Exact message hash already ingested.",
+                    candidate: candidate
+                )
+            }
         } else if let txnSvc = transactionService {
             // Persist as a durable review item in SwiftData
             var reviewCandidate = candidate
             reviewCandidate.needsReview = true
-            let savedID = try await txnSvc.createTransaction(reviewCandidate)
-            
-            // Record fingerprint to prevent duplicate re-import
-            try await fingerprintService?.recordFingerprint(
+            let persistenceResult = try await txnSvc.createTransactionAndFingerprint(
+                reviewCandidate,
                 sourceHash: sourceHash,
-                amount: candidate.amount,
-                merchant: candidate.merchantName,
                 accountLastFour: accountMaskVal,
-                reference: candidate.sourceReference,
-                timestamp: candidate.transactionDate,
                 source: "sms"
             )
-            
-            return .reviewRequired(candidate: reviewCandidate, warnings: confidenceEval.warnings)
+            switch persistenceResult {
+            case .saved:
+                return .reviewRequired(candidate: reviewCandidate, warnings: confidenceEval.warnings)
+            case .duplicate:
+                return .duplicate(
+                    reason: "Exact message hash already ingested.",
+                    candidate: reviewCandidate
+                )
+            }
         } else {
             // Fallback for stateless evaluation
             return .reviewRequired(candidate: candidate, warnings: confidenceEval.warnings)

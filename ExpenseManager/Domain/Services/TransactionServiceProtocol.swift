@@ -8,6 +8,12 @@
 
 import Foundation
 
+/// Result of persisting an imported transaction and its duplicate fingerprint.
+public enum TransactionImportResult: Equatable, Sendable {
+    case saved(transactionID: String)
+    case duplicate
+}
+
 /// Service protocol defining core transaction persistence and query operations.
 public protocol TransactionServiceProtocol: Sendable {
     
@@ -27,6 +33,18 @@ public protocol TransactionServiceProtocol: Sendable {
     /// Returns the assigned transaction ID.
     @discardableResult
     func createTransaction(_ candidate: TransactionCandidate) async throws -> String
+
+    /// Atomically persists an imported transaction and its duplicate fingerprint.
+    ///
+    /// Implementations must make the transaction and fingerprint part of one
+    /// persistence boundary. A duplicate result means no new transaction was
+    /// persisted.
+    func createTransactionAndFingerprint(
+        _ candidate: TransactionCandidate,
+        sourceHash: String,
+        accountLastFour: String?,
+        source: String
+    ) async throws -> TransactionImportResult
     
     /// Updates an existing transaction.
     func updateTransaction(id: String, candidate: TransactionCandidate) async throws

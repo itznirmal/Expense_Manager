@@ -1,0 +1,23 @@
+ISS-019 static verification — 2026-08-27
+
+Scope:
+- TransactionServiceProtocol.swift
+- SwiftDataTransactionService.swift
+- MockTransactionService.swift
+- ImportFingerprintService.swift
+- SMSIngestionOrchestrator.swift
+- DuplicatePreventionTests.swift
+- FinancialEngineTests.swift
+
+Checks:
+- PASS: git diff --check reported no whitespace errors.
+- PASS: TransactionServiceProtocol exposes createTransactionAndFingerprint with a typed saved/duplicate result.
+- PASS: SwiftDataTransactionService inserts TransactionRecord and ImportFingerprintRecord into modelContainer.mainContext and calls modelContext.save() once within the atomic operation.
+- PASS: Atomic save failure calls modelContext.rollback(); a source-hash conflict is mapped to .duplicate.
+- PASS: ImportFingerprintRecord.sourceHash remains @Attribute(.unique).
+- PASS: SMSIngestionOrchestrator propagates accountMaskVal into exact source hashing and routes both auto-save and review persistence through the atomic operation.
+- PASS: Focused in-memory tests cover paired persistence, duplicate no-op behavior, rollback without an orphan fingerprint, account-aware hashes, and orchestrator duplicate mapping.
+- PASS: Parentheses and malformed patch-marker static checks passed for all changed Swift files.
+
+Not run:
+- Swift/Xcode compilation and XCTest execution are not available on this Windows host. macOS/Xcode execution is a manual evidence gate.

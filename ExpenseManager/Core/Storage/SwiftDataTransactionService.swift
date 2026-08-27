@@ -103,76 +103,63 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     
     @discardableResult
     public func createTransaction(_ candidate: TransactionCandidate) async throws -> String {
-        let normalizedAmount = abs(candidate.amount)
-        let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
-        let resolvedAccount = try resolveAccountSuggestion(for: candidate.accountSuggestion)
-        var resolvedDestinationAccount: AccountRecord?
-
-        if candidate.type == .transfer {
-            guard resolvedAccount != nil else {
-                throw TransactionServiceError.transactionMissingSourceAccount
-            }
-            guard let destination = try resolveAccount(for: candidate.destinationAccountSuggestion) else {
-                throw TransactionServiceError.transferMissingDestination
-            }
-            resolvedDestinationAccount = destination
-        } else if candidate.type == .cashWithdrawal {
-            guard let source = resolvedAccount else {
-                throw TransactionServiceError.transactionMissingSourceAccount
-            }
-            try validateCurrency(of: source, expected: candidate.currencyCode)
-            resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
-        } else {
-            resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
-        }
-
-        try validateBalanceEffectRelationships(
-            for: candidate.type,
-            currencyCode: candidate.currencyCode,
-            account: resolvedAccount,
-            destinationAccount: resolvedDestinationAccount
-        )
-
-        let isPending = candidate.needsReview
-        
-        let record = TransactionRecord(
-            id: candidate.id.uuidString,
-            type: candidate.type,
-            amount: normalizedAmount,
-            currencyCode: candidate.currencyCode,
-            merchantName: candidate.merchantName,
-            category: resolvedCategory,
-            account: resolvedAccount,
-            destinationAccount: resolvedDestinationAccount,
-            paymentMethod: candidate.paymentMethod,
-            transactionDate: candidate.transactionDate,
-            notes: candidate.notes,
-            tags: candidate.tags,
-            source: candidate.source,
-            sourceReference: candidate.sourceReference,
-            confidence: candidate.confidence.value,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-        
-        record.isPendingReview = isPending
-        record.isAccepted = !isPending
-        
-        // Apply balance adjustment invariant only if accepted
-        if !isPending {
-            applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
-        }
-        
-        modelContext.insert(record)
-        
+        let record = try insertTransaction(candidate)
         do {
             try modelContext.save()
         } catch {
             modelContext.rollback()
             throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
         }
-        
+
         return record.id
+    }
+
+    public func createTransactionAndFingerprint(
+        _ candidate: TransactionCandidate,
+        sourceHash: String,
+        accountLastFour: String?,
+        source: String
+    ) async throws -> TransactionImportResult {
+        if try hasDuplicateFingerprint(
+            sourceHash: sourceHash,
+            amount: abs(candidate.amount),
+            merchant: candidate.merchantName,
+            accountLastFour: accountLastFour,
+            referenceNumber: candidate.sourceReference,
+            timestamp: candidate.transactionDate
+        ) {
+            return .duplicate
+        }
+
+        let record: TransactionRecord
+        do {
+            record = try insertTransaction(candidate)
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+
+        do {
+            let fingerprint = ImportFingerprintRecord(
+                sourceHash: sourceHash,
+                amount: abs(candidate.amount),
+                normalizedMerchant: candidate.merchantName.trimmingCharacters(in: .whitespacesAndNewlines),
+                accountLastFour: accountLastFour,
+                transactionReference: candidate.sourceReference,
+                approximateTimestamp: candidate.transactionDate,
+                source: source
+            )
+            modelContext.insert(fingerprint)
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            if (try? hasFingerprint(sourceHash: sourceHash)) == true {
+                return .duplicate
+            }
+            throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
+        }
+
+        return .saved(transactionID: record.id)
     }
     
     public func updateTransaction(id: String, candidate: TransactionCandidate) async throws {
@@ -419,6 +406,132 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         case .unknown:
             break
         }
+    }
+
+    /// Builds and inserts a transaction without saving the context.
+    /// Callers use this to compose a larger atomic persistence operation.
+    private func insertTransaction(_ candidate: TransactionCandidate) throws -> TransactionRecord {
+        let normalizedAmount = abs(candidate.amount)
+        let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
+        let resolvedAccount = try resolveAccountSuggestion(for: candidate.accountSuggestion)
+        var resolvedDestinationAccount: AccountRecord?
+
+        if candidate.type == .transfer {
+            guard resolvedAccount != nil else {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
+            guard let destination = try resolveAccount(for: candidate.destinationAccountSuggestion) else {
+                throw TransactionServiceError.transferMissingDestination
+            }
+            resolvedDestinationAccount = destination
+        } else if candidate.type == .cashWithdrawal {
+            guard let source = resolvedAccount else {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
+            try validateCurrency(of: source, expected: candidate.currencyCode)
+            resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
+        } else {
+            resolvedDestinationAccount = try resolveAccount(for: candidate.destinationAccountSuggestion)
+        }
+
+        try validateBalanceEffectRelationships(
+            for: candidate.type,
+            currencyCode: candidate.currencyCode,
+            account: resolvedAccount,
+            destinationAccount: resolvedDestinationAccount
+        )
+
+        let isPending = candidate.needsReview
+        let record = TransactionRecord(
+            id: candidate.id.uuidString,
+            type: candidate.type,
+            amount: normalizedAmount,
+            currencyCode: candidate.currencyCode,
+            merchantName: candidate.merchantName,
+            category: resolvedCategory,
+            account: resolvedAccount,
+            destinationAccount: resolvedDestinationAccount,
+            paymentMethod: candidate.paymentMethod,
+            transactionDate: candidate.transactionDate,
+            notes: candidate.notes,
+            tags: candidate.tags,
+            source: candidate.source,
+            sourceReference: candidate.sourceReference,
+            confidence: candidate.confidence.value,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+
+        record.isPendingReview = isPending
+        record.isAccepted = !isPending
+
+        if !isPending {
+            applyBalanceEffect(
+                for: candidate.type,
+                amount: normalizedAmount,
+                account: resolvedAccount,
+                destinationAccount: resolvedDestinationAccount
+            )
+        }
+
+        modelContext.insert(record)
+        return record
+    }
+
+    private func hasDuplicateFingerprint(
+        sourceHash: String,
+        amount: Decimal,
+        merchant: String,
+        accountLastFour: String?,
+        referenceNumber: String?,
+        timestamp: Date
+    ) throws -> Bool {
+        let exactDescriptor = FetchDescriptor<ImportFingerprintRecord>(
+            predicate: #Predicate { $0.sourceHash == sourceHash }
+        )
+        if try modelContext.fetch(exactDescriptor).isEmpty == false {
+            return true
+        }
+
+        let normalizedMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let windowStart = timestamp.addingTimeInterval(-300)
+        let windowEnd = timestamp.addingTimeInterval(300)
+        let records = try modelContext.fetch(FetchDescriptor<ImportFingerprintRecord>())
+
+        return records.contains { item in
+            if let referenceNumber,
+               let itemReference = item.transactionReference,
+               !referenceNumber.isEmpty,
+               referenceNumber == itemReference {
+                return true
+            }
+
+            guard item.amount == amount,
+                  item.approximateTimestamp >= windowStart,
+                  item.approximateTimestamp <= windowEnd else {
+                return false
+            }
+
+            let itemMerchant = item.normalizedMerchant
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let merchantMatches = itemMerchant == normalizedMerchant ||
+                itemMerchant.contains(normalizedMerchant) ||
+                normalizedMerchant.contains(itemMerchant)
+            guard merchantMatches else { return false }
+
+            if let accountLastFour, let itemAccountLastFour = item.accountLastFour {
+                return accountLastFour == itemAccountLastFour
+            }
+            return true
+        }
+    }
+
+    private func hasFingerprint(sourceHash: String) throws -> Bool {
+        let descriptor = FetchDescriptor<ImportFingerprintRecord>(
+            predicate: #Predicate { $0.sourceHash == sourceHash }
+        )
+        return try modelContext.fetch(descriptor).isEmpty == false
     }
     
     // MARK: - Private Lookups
