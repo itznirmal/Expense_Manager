@@ -300,7 +300,9 @@ final class DataExportAndSecurityTests: XCTestCase {
     @MainActor
     func testLegacyBackupWithoutReviewStateDefaultsSafely() async throws {
         let timestamp = Date(timeIntervalSince1970: 1_730_000_000)
-        let legacyTransaction = TransactionBackupDTO(
+        // This fixture intentionally models the pre-ISS-018 wire format instead of
+        // using TransactionBackupDTO, whose encoder now owns review-state compatibility.
+        let legacyTransaction = LegacyTransactionBackupDTO(
             id: "legacy-tx",
             type: "expense",
             amount: Decimal(250),
@@ -319,7 +321,8 @@ final class DataExportAndSecurityTests: XCTestCase {
             createdAt: timestamp,
             updatedAt: timestamp
         )
-        let legacyData = BackupData(
+        let legacyData = LegacyBackupData(
+            accounts: [],
             categories: [
                 CategoryBackupDTO(
                     id: "legacy-category",
@@ -332,11 +335,17 @@ final class DataExportAndSecurityTests: XCTestCase {
                     sortOrder: 1
                 )
             ],
+            tags: [],
             transactions: [legacyTransaction],
+            budgets: [],
+            merchantRules: [],
             importFingerprints: nil
         )
 
-        let encoder = DataExportService.createJSONEncoder()
+        // Keep the legacy bytes independent of DataExportService's current encoder.
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         let legacyDataBytes = try encoder.encode(legacyData)
         let legacyObject = try XCTUnwrap(
             try JSONSerialization.jsonObject(with: legacyDataBytes) as? [String: Any]
@@ -347,7 +356,7 @@ final class DataExportAndSecurityTests: XCTestCase {
         XCTAssertNil(legacyTransactionObject["isAccepted"])
         XCTAssertNil(legacyTransactionObject["reviewReasons"])
 
-        let legacyPayload = BackupPayload(
+        let legacyPayload = LegacyBackupPayload(
             checksum: DataExportService.computeSHA256(for: legacyDataBytes),
             data: legacyData
         )
@@ -359,7 +368,9 @@ final class DataExportAndSecurityTests: XCTestCase {
         XCTAssertTrue(decodedTransaction.isAccepted)
         XCTAssertTrue(decodedTransaction.reviewReasons.isEmpty)
 
-        _ = try await exportService.restoreJSONBackup(from: legacyPayloadData)
+        let restoreResult = try await exportService.restoreJSONBackup(from: legacyPayloadData)
+        XCTAssertEqual(restoreResult.categoriesRestored, 1)
+        XCTAssertEqual(restoreResult.transactionsRestored, 1)
         let restoredRecords = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
         let restoredRecord = try XCTUnwrap(restoredRecords.first(where: { $0.id == "legacy-tx" }))
         XCTAssertFalse(restoredRecord.isPendingReview)
@@ -528,5 +539,82 @@ final class DataExportAndSecurityTests: XCTestCase {
         await viewModel.executePurge(appState: appState)
         XCTAssertTrue(mockService.purged)
         XCTAssertEqual(appState.activeToast?.title, "Database Reset")
+    }
+}
+
+// MARK: - Pre-ISS-018 Backup Fixture
+
+/// The schema-version-1 transaction shape written before review-state fields existed.
+/// Keep this DTO separate from TransactionBackupDTO so the compatibility test cannot
+/// accidentally derive its legacy bytes from the current production encoder.
+private struct LegacyTransactionBackupDTO: Encodable {
+    let id: String
+    let type: String
+    let amount: Decimal
+    let currencyCode: String
+    let merchantName: String
+    let categoryID: String?
+    let accountID: String?
+    let destinationAccountID: String?
+    let paymentMethod: String?
+    let transactionDate: Date
+    let notes: String?
+    let tags: [String]
+    let source: String
+    let sourceReference: String?
+    let confidence: Double
+    let createdAt: Date
+    let updatedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case amount
+        case currencyCode
+        case merchantName
+        case categoryID
+        case accountID
+        case destinationAccountID
+        case paymentMethod
+        case transactionDate
+        case notes
+        case tags
+        case source
+        case sourceReference
+        case confidence
+        case createdAt
+        case updatedAt
+    }
+}
+
+private struct LegacyBackupData: Encodable {
+    let accounts: [AccountBackupDTO]
+    let categories: [CategoryBackupDTO]
+    let tags: [TagBackupDTO]
+    let transactions: [LegacyTransactionBackupDTO]
+    let budgets: [BudgetBackupDTO]
+    let merchantRules: [MerchantRuleBackupDTO]
+    let importFingerprints: [ImportFingerprintBackupDTO]?
+}
+
+private struct LegacyBackupPayload: Encodable {
+    let schemaVersion: Int
+    let appVersion: String
+    let exportedAt: Date
+    let checksum: String
+    let data: LegacyBackupData
+
+    init(
+        schemaVersion: Int = 1,
+        appVersion: String = "1.0.0",
+        exportedAt: Date = Date(timeIntervalSince1970: 1_730_000_000),
+        checksum: String,
+        data: LegacyBackupData
+    ) {
+        self.schemaVersion = schemaVersion
+        self.appVersion = appVersion
+        self.exportedAt = exportedAt
+        self.checksum = checksum
+        self.data = data
     }
 }
