@@ -52,7 +52,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         descriptor.fetchLimit = limit
         
         let records = try modelContext.fetch(descriptor)
-        return records.filter { !.isPendingReview }.map { .toCandidate() }
+        return records.filter { !$0.isPendingReview }.map { $0.toCandidate() }
     }
     
     public func fetchPendingReviewTransactions() async throws -> [TransactionCandidate] {
@@ -60,7 +60,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
         )
         let records = try modelContext.fetch(descriptor)
-        return records.filter { .isPendingReview }.map { .toCandidate() }
+        return records.filter { $0.isPendingReview }.map { $0.toCandidate() }
     }
     
     public func fetchTransactions(
@@ -110,7 +110,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
         }
         
-        let isPending = candidate.needsReview || candidate.isPendingReview
+        let isPending = candidate.needsReview
         
         let record = TransactionRecord(
             id: candidate.id.uuidString,
@@ -185,7 +185,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             resolvedDestinationAccount = try resolveCashAccount(currencyCode: candidate.currencyCode)
         }
         
-        let isPending = candidate.needsReview || candidate.isPendingReview
+        let isPending = candidate.needsReview
         
         // 3. Update record properties
         record.transactionType = candidate.type
@@ -405,7 +405,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     private func resolveCashAccount(currencyCode: String) throws -> AccountRecord {
         let descriptor = FetchDescriptor<AccountRecord>()
         let accounts = try modelContext.fetch(descriptor)
-        if let cashAccount = accounts.first(where: { .accountType == .cash || .name.localizedCaseInsensitiveCompare("Cash") == .orderedSame }) {
+        if let cashAccount = accounts.first(where: { $0.accountType == .cash || $0.name.localizedCaseInsensitiveCompare("Cash") == .orderedSame }) {
             return cashAccount
         }
         

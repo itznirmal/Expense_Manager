@@ -1,0 +1,12 @@
+ISS-016 static verification — 2026-08-27
+
+Scope:
+- SwiftDataTransactionService.swift
+- MockTransactionService.swift
+- TransactionServiceProtocolTests.swift
+
+Checks:
+- Scanned ExpenseManager/**/*.swift for the reported leading-dot closure shorthand and stale candidate.isPendingReview references: no matches.
+- Confirmed both concrete transaction services implement fetchPendingReviewTransactions, acceptTransaction, and calculateTotals(startDate:endDate:currencyCode:).
+- Added a protocol-typed mock regression test covering pending-review isolation, currency-aware totals, and acceptance.
+- Swift/Xcode build and XCTest execution: not run; no Swift toolchain is installed on this Windows host. macOS/Xcode remains the manual evidence gate.

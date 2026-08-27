@@ -23,8 +23,18 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
     public func fetchRecentTransactions(limit: Int) async throws -> [TransactionCandidate] {
         lock.lock()
         defer { lock.unlock() }
-        let sorted = transactions.sorted(by: { $0.transactionDate > $1.transactionDate })
+        let sorted = transactions
+            .filter { !$0.needsReview }
+            .sorted(by: { $0.transactionDate > $1.transactionDate })
         return Array(sorted.prefix(limit))
+    }
+
+    public func fetchPendingReviewTransactions() async throws -> [TransactionCandidate] {
+        lock.lock()
+        defer { lock.unlock() }
+        return transactions
+            .filter { $0.needsReview }
+            .sorted(by: { $0.transactionDate > $1.transactionDate })
     }
     
     public func fetchTransactions(
@@ -38,6 +48,7 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
         return transactions.filter { item in
             if let start = startDate, item.transactionDate < start { return false }
             if let end = endDate, item.transactionDate > end { return false }
+            if item.needsReview { return false }
             if let cat = categoryID, item.categorySuggestion != cat { return false }
             if let acc = accountID, item.accountSuggestion != acc { return false }
             return true
@@ -62,6 +73,16 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
             transactions[index] = normalized
         }
     }
+
+    public func acceptTransaction(id: String) async throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = transactions.firstIndex(where: { $0.id.uuidString == id }) else {
+            throw TransactionServiceError.transactionNotFound(id: id)
+        }
+        guard transactions[index].needsReview else { return }
+        transactions[index].needsReview = false
+    }
     
     public func deleteTransaction(id: String) async throws {
         lock.lock()
@@ -69,13 +90,13 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
         transactions.removeAll(where: { $0.id.uuidString == id })
     }
     
-    public func calculateTotals(startDate: Date, endDate: Date) async throws -> (income: Decimal, expense: Decimal) {
+    public func calculateTotals(startDate: Date, endDate: Date, currencyCode: String) async throws -> (income: Decimal, expense: Decimal) {
         lock.lock()
         defer { lock.unlock() }
         var totalIncome: Decimal = .zero
         var totalExpense: Decimal = .zero
         
-        for item in transactions where item.transactionDate >= startDate && item.transactionDate <= endDate {
+        for item in transactions where item.transactionDate >= startDate && item.transactionDate <= endDate && !item.needsReview && item.currencyCode == currencyCode {
             switch item.type {
             case .income:
                 totalIncome += item.amount

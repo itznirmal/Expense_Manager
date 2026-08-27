@@ -234,3 +234,11 @@ Evidence: `PROJECT_MEMORY.md`, `AGENTS.md`, `QUALITY_BAR.md`, `ISSUES.md`
 Open: None
 Blocked: None
 Next: Phase 0 Foundation Execution.
+
+## 2026-08-27 — ISS-016 Transaction service compile baseline remediated
+Works: Removed all reported invalid closure shorthand and nonexistent `TransactionCandidate.isPendingReview` references; SwiftData and mock services now satisfy the transaction-service protocol requirements.
+Changed: Added pending-review isolation, acceptance, and currency-aware totals to `MockTransactionService`; added `TransactionServiceProtocolTests`.
+Evidence: `evidence/transaction-services/iss-016/static-verification.txt`; `ExpenseManager/Tests/FoundationTests/TransactionServiceProtocolTests.swift`.
+Open: ISS-017, ISS-018, ISS-019, ISS-020.
+Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
+Next: Build and run the transaction-service regression test on macOS/Xcode, then fix ISS-017.
