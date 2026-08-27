@@ -106,8 +106,13 @@ final class TransactionLedgerInvariantTests: XCTestCase {
 
         var replacement = original
         replacement.accountSuggestion = "missing-source"
-        try await assertThrows {
-            try await self.transactionService.updateTransaction(id: transactionID, candidate: replacement)
+        do {
+            try await transactionService.updateTransaction(id: transactionID, candidate: replacement)
+            XCTFail("Expected an unresolved account suggestion to throw")
+        } catch TransactionServiceError.transactionMissingSourceAccount {
+            // Expected: the prior accepted effect must remain untouched.
+        } catch {
+            XCTFail("Expected transactionMissingSourceAccount, got \(error)")
         }
 
         let balanceAfterUpdate = try await accountService.getAccount(id: accountID)?.balance
@@ -139,6 +144,7 @@ final class TransactionLedgerInvariantTests: XCTestCase {
         replacement.type = .income
         replacement.amount = 500
         replacement.merchantName = "Unassigned Income"
+        replacement.accountSuggestion = ""
         try await transactionService.updateTransaction(id: transactionID, candidate: replacement)
 
         let transactions = try await transactionService.fetchTransactions(

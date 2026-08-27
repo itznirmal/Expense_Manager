@@ -105,7 +105,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     public func createTransaction(_ candidate: TransactionCandidate) async throws -> String {
         let normalizedAmount = abs(candidate.amount)
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
-        let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion)
+        let resolvedAccount = try resolveAccountSuggestion(for: candidate.accountSuggestion)
         var resolvedDestinationAccount: AccountRecord?
 
         if candidate.type == .transfer {
@@ -189,7 +189,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
 
         // Resolve and validate every replacement relationship before touching the old effect.
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
-        let resolvedAccount = try resolveAccount(for: candidate.accountSuggestion)
+        let resolvedAccount = try resolveAccountSuggestion(for: candidate.accountSuggestion)
 
         var resolvedDestinationAccount: AccountRecord?
         if candidate.type == .transfer {
@@ -464,6 +464,16 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         }
         
         return nil
+    }
+
+    private func resolveAccountSuggestion(for suggestion: String?) throws -> AccountRecord? {
+        let resolvedAccount = try resolveAccount(for: suggestion)
+        guard resolvedAccount == nil else { return resolvedAccount }
+        guard let suggestion,
+              !suggestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        throw TransactionServiceError.transactionMissingSourceAccount
     }
     
     private func resolveCategory(for identifierOrName: String?) throws -> CategoryRecord? {

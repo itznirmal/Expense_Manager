@@ -13,7 +13,7 @@ Checks:
 - Transfer and cash-withdrawal creation/update reject every participating account whose currency differs from the candidate currency.
 - Automatic cash resolution selects only active AccountType.cash accounts with the requested currency, never by name alone, and creates that currency when none exists.
 - Legacy pending transfer and cash-withdrawal records are relationship- and currency-validated before acceptance or balance application.
-- Ordinary accountless records remain editable because only transfers and cash withdrawals require source accounts.
+- Ordinary accountless records remain editable when accountSuggestion is nil or blank; a nonblank unresolved accountSuggestion throws transactionMissingSourceAccount before any prior accepted effect is reversed.
 - Focused tests exercise the service through TransactionServiceProtocol-facing public methods and AccountServiceProtocol-facing public methods.
 - Changed Swift files have balanced braces and `git diff --check` reports no whitespace errors.
 - Swift/Xcode build and XCTest execution: not run; no Swift toolchain is installed on this Windows host. macOS/Xcode remains the manual evidence gate.

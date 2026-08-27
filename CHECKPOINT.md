@@ -266,3 +266,11 @@ Evidence: evidence/transaction-services/iss-017/static-verification.txt; Expense
 Open: ISS-018, ISS-019, ISS-020.
 Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
 Next: Build and run the updated transaction-ledger regression tests on macOS/Xcode, then fix ISS-018.
+
+## 2026-08-27 — ISS-017 final account-suggestion invariant
+Works: Ordinary transactions remain accountless when accountSuggestion is nil or blank; an unresolved nonblank accountSuggestion now throws the typed transactionMissingSourceAccount error before any prior accepted balance effect is reversed.
+Changed: Centralized account-suggestion resolution for create/update and tightened the focused invalid-update regression to assert the typed failure and unchanged ledger state.
+Evidence: evidence/transaction-services/iss-017/static-verification.txt; ExpenseManager/Tests/FinancialEngineTests/TransactionLedgerInvariantTests.swift.
+Open: ISS-018, ISS-019, ISS-020.
+Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
+Next: Build and run the updated transaction-ledger regression tests on macOS/Xcode, then fix ISS-018.
