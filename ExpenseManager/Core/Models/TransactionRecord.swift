@@ -34,6 +34,10 @@ public final class TransactionRecord {
     @Attribute public var isPendingReview: Bool = false
     public var isAccepted: Bool = true
     public var reviewReasons: [String] = []
+    /// When set, this row is a child line created by splitting another transaction.
+    public var parentTransactionID: String?
+    /// Shared group id for all lines produced by one split operation.
+    public var splitGroupID: String?
     
     public init(
         id: String = UUID().uuidString,

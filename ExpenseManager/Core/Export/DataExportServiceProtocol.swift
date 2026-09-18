@@ -259,6 +259,11 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
     public let confidence: Double
     public let createdAt: Date
     public let updatedAt: Date
+    public var isPendingReview: Bool?
+    public var isAccepted: Bool?
+    public var reviewReasons: [String]?
+    public var parentTransactionID: String?
+    public var splitGroupID: String?
     
     public init(
         id: String,
@@ -277,7 +282,12 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         sourceReference: String?,
         confidence: Double,
         createdAt: Date,
-        updatedAt: Date
+        updatedAt: Date,
+        isPendingReview: Bool? = false,
+        isAccepted: Bool? = true,
+        reviewReasons: [String]? = [],
+        parentTransactionID: String? = nil,
+        splitGroupID: String? = nil
     ) {
         self.id = id
         self.type = type
@@ -296,6 +306,11 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         self.confidence = confidence
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.isPendingReview = isPendingReview
+        self.isAccepted = isAccepted
+        self.reviewReasons = reviewReasons
+        self.parentTransactionID = parentTransactionID
+        self.splitGroupID = splitGroupID
     }
 }
 

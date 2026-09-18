@@ -23,7 +23,7 @@ struct ExpenseManagerApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environment(appState)
+                .environment(\.appState, appState)
                 .environment(\.dependencyContainer, container)
                 .modelContainer(databaseContainer.container)
                 .task {

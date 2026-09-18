@@ -287,6 +287,26 @@ public struct TransactionDetailView: View {
     
     private var actionButtonsSection: some View {
         VStack(spacing: 12) {
+            if transaction.type == .expense || transaction.type == .income || transaction.type == .refund {
+                Button {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        appState.presentSheet(.splitTransaction(transaction: transaction))
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.triangle.branch")
+                        Text("Split Transaction")
+                    }
+                    .font(Typography.headline)
+                    .foregroundStyle(ColorTokens.brandPrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(ColorTokens.brandPrimary.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+            
             Button(action: {
                 isShowingDeleteConfirmation = true
             }) {

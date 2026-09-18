@@ -9,6 +9,24 @@
 import Foundation
 import SwiftData
 
+/// Errors thrown by category taxonomy operations.
+public enum CategoryServiceError: LocalizedError, Sendable {
+    case categoryNotFound(id: String)
+    case cannotModifySystemCategory
+    case invalidName
+    
+    public var errorDescription: String? {
+        switch self {
+        case .categoryNotFound(let id):
+            return "Category '\(id)' was not found."
+        case .cannotModifySystemCategory:
+            return "System categories cannot be edited or deleted."
+        case .invalidName:
+            return "Category name cannot be empty."
+        }
+    }
+}
+
 /// SwiftData persistent implementation of the Category Taxonomy Service.
 @MainActor
 public final class SwiftDataCategoryService: CategoryServiceProtocol, Sendable {
@@ -70,6 +88,47 @@ public final class SwiftDataCategoryService: CategoryServiceProtocol, Sendable {
         try modelContext.save()
         
         return record.id
+    }
+    
+    public func updateCategory(
+        id: String,
+        name: String,
+        icon: String,
+        colorToken: String,
+        type: CategoryType
+    ) async throws {
+        guard let record = try fetchRecord(by: id) else {
+            throw CategoryServiceError.categoryNotFound(id: id)
+        }
+        guard !record.isSystem else {
+            throw CategoryServiceError.cannotModifySystemCategory
+        }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw CategoryServiceError.invalidName
+        }
+        record.name = trimmed
+        record.icon = icon
+        record.colorToken = colorToken
+        record.categoryType = type
+        try modelContext.save()
+    }
+    
+    public func deleteCategory(id: String) async throws {
+        guard let record = try fetchRecord(by: id) else {
+            throw CategoryServiceError.categoryNotFound(id: id)
+        }
+        guard !record.isSystem else {
+            throw CategoryServiceError.cannotModifySystemCategory
+        }
+        // Detach transactions so delete does not cascade unexpectedly.
+        let txDescriptor = FetchDescriptor<TransactionRecord>()
+        let transactions = try modelContext.fetch(txDescriptor)
+        for tx in transactions where tx.category?.id == id {
+            tx.category = nil
+        }
+        modelContext.delete(record)
+        try modelContext.save()
     }
     
     public func seedDefaultCategoriesIfNeeded() async throws {

@@ -18,8 +18,12 @@ public final class SettingsViewModel {
     
     // MARK: - State Properties
     
-    public var defaultCurrency: String = "INR"
-    public var autoParseSMS: Bool = true
+    public var defaultCurrency: String {
+        didSet { UserDefaults.standard.set(defaultCurrency, forKey: "defaultCurrency") }
+    }
+    public var autoParseSMS: Bool {
+        didSet { UserDefaults.standard.set(autoParseSMS, forKey: "autoParseSMS") }
+    }
     
     public var isExportingCSV: Bool = false
     public var csvExportURL: URL? = nil
@@ -46,6 +50,13 @@ public final class SettingsViewModel {
     
     public init(exportService: DataExportServiceProtocol = MockDataExportService()) {
         self.exportService = exportService
+        let storedCurrency = UserDefaults.standard.string(forKey: "defaultCurrency") ?? "INR"
+        self.defaultCurrency = storedCurrency
+        if UserDefaults.standard.object(forKey: "autoParseSMS") == nil {
+            self.autoParseSMS = true
+        } else {
+            self.autoParseSMS = UserDefaults.standard.bool(forKey: "autoParseSMS")
+        }
     }
     
     // MARK: - Biometric Toggle Check (GT-66)

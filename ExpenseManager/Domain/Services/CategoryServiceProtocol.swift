@@ -27,6 +27,19 @@ public protocol CategoryServiceProtocol: Sendable {
         type: CategoryType
     ) async throws -> String
     
+    /// Updates a custom (non-system) category.
+    func updateCategory(
+        id: String,
+        name: String,
+        icon: String,
+        colorToken: String,
+        type: CategoryType
+    ) async throws
+    
+    /// Deletes a custom category. System categories cannot be deleted.
+    /// Existing transactions keep their historical category name via nil relationship.
+    func deleteCategory(id: String) async throws
+    
     /// Seeds default system categories if the category store is empty.
     func seedDefaultCategoriesIfNeeded() async throws
 }

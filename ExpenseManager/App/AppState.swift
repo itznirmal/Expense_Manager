@@ -57,6 +57,8 @@ public enum AppSheet: Identifiable, Sendable, Equatable {
     case transactionFilter
     case transactionBatchCategorize
     case smsDiagnostics
+    case splitTransaction(transaction: TransactionCandidate)
+    case statementImport
     
     public var id: String {
         switch self {
@@ -74,6 +76,8 @@ public enum AppSheet: Identifiable, Sendable, Equatable {
         case .transactionFilter: return "transactionFilter"
         case .transactionBatchCategorize: return "transactionBatchCategorize"
         case .smsDiagnostics: return "smsDiagnostics"
+        case .splitTransaction(let tx): return "splitTransaction_\(tx.id.uuidString)"
+        case .statementImport: return "statementImport"
         }
     }
 }
@@ -205,10 +209,11 @@ public final class AppState {
 // MARK: - SwiftUI Environment Key
 
 private struct AppStateKey: EnvironmentKey {
-    static let defaultValue: AppState = AppState()
+    @MainActor static let defaultValue = AppState()
 }
 
 public extension EnvironmentValues {
+    @MainActor
     var appState: AppState {
         get { self[AppStateKey.self] }
         set { self[AppStateKey.self] = newValue }

@@ -23,8 +23,18 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
     public func fetchRecentTransactions(limit: Int) async throws -> [TransactionCandidate] {
         lock.lock()
         defer { lock.unlock() }
-        let sorted = transactions.sorted(by: { $0.transactionDate > $1.transactionDate })
+        let sorted = transactions
+            .filter { !$0.needsReview }
+            .sorted(by: { $0.transactionDate > $1.transactionDate })
         return Array(sorted.prefix(limit))
+    }
+    
+    public func fetchPendingReviewTransactions() async throws -> [TransactionCandidate] {
+        lock.lock()
+        defer { lock.unlock() }
+        return transactions
+            .filter(\.needsReview)
+            .sorted(by: { $0.transactionDate > $1.transactionDate })
     }
     
     public func fetchTransactions(
@@ -36,6 +46,7 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
         lock.lock()
         defer { lock.unlock() }
         return transactions.filter { item in
+            if item.needsReview { return false }
             if let start = startDate, item.transactionDate < start { return false }
             if let end = endDate, item.transactionDate > end { return false }
             if let cat = categoryID, item.categorySuggestion != cat { return false }
@@ -63,26 +74,78 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
         }
     }
     
+    public func acceptTransaction(id: String) async throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = transactions.firstIndex(where: { $0.id.uuidString == id }) else { return }
+        transactions[index].needsReview = false
+    }
+    
     public func deleteTransaction(id: String) async throws {
         lock.lock()
         defer { lock.unlock() }
         transactions.removeAll(where: { $0.id.uuidString == id })
     }
     
-    public func calculateTotals(startDate: Date, endDate: Date) async throws -> (income: Decimal, expense: Decimal) {
+    public func splitTransaction(
+        id: String,
+        splits: [TransactionSplitLine]
+    ) async throws -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = transactions.firstIndex(where: { $0.id.uuidString == id }) else {
+            throw TransactionServiceError.transactionNotFound(id: id)
+        }
+        let parent = transactions[index]
+        let total = splits.reduce(Decimal.zero) { $0 + abs($1.amount) }
+        guard total == abs(parent.amount) else {
+            throw TransactionServiceError.splitAmountsMustEqualParent
+        }
+        
+        transactions.remove(at: index)
+        var createdIDs: [String] = []
+        for line in splits {
+            var child = parent
+            child = TransactionCandidate(
+                id: UUID(),
+                type: parent.type,
+                amount: abs(line.amount),
+                currencyCode: parent.currencyCode,
+                merchantName: line.merchantName.isEmpty ? parent.merchantName : line.merchantName,
+                categorySuggestion: line.categoryName ?? parent.categorySuggestion,
+                accountSuggestion: parent.accountSuggestion,
+                destinationAccountSuggestion: parent.destinationAccountSuggestion,
+                paymentMethod: parent.paymentMethod,
+                transactionDate: parent.transactionDate,
+                notes: line.notes ?? parent.notes,
+                tags: parent.tags,
+                source: parent.source,
+                sourceReference: parent.sourceReference,
+                confidence: parent.confidence,
+                needsReview: false,
+                warnings: []
+            )
+            transactions.append(child)
+            createdIDs.append(child.id.uuidString)
+        }
+        return createdIDs
+    }
+    
+    public func calculateTotals(startDate: Date, endDate: Date, currencyCode: String) async throws -> (income: Decimal, expense: Decimal) {
         lock.lock()
         defer { lock.unlock() }
         var totalIncome: Decimal = .zero
         var totalExpense: Decimal = .zero
         
-        for item in transactions where item.transactionDate >= startDate && item.transactionDate <= endDate {
+        for item in transactions where item.transactionDate >= startDate
+            && item.transactionDate <= endDate
+            && !item.needsReview
+            && item.currencyCode == currencyCode {
             switch item.type {
-            case .income:
+            case .income, .refund:
                 totalIncome += item.amount
             case .expense:
                 totalExpense += item.amount
-            case .refund:
-                totalIncome += item.amount
             case .transfer, .cashWithdrawal, .unknown:
                 break
             }

@@ -82,4 +82,15 @@ public final class CategoriesViewModel {
             return false
         }
     }
+    
+    public func deleteCategory(id: String, container: DependencyContainer, appState: AppState) async {
+        do {
+            try await container.categoryService.deleteCategory(id: id)
+            await loadCategories(container: container)
+            appState.showToast(title: "Category Deleted", type: .info)
+        } catch {
+            errorMessage = error.localizedDescription
+            appState.showToast(title: "Delete Failed", message: error.localizedDescription, type: .error)
+        }
+    }
 }

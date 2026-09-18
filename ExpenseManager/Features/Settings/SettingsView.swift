@@ -34,8 +34,13 @@ public struct SettingsView: View {
                     HStack {
                         Label("Default Currency", systemImage: "indianrupeesign.circle")
                         Spacer()
-                        Text("INR (₹)")
-                            .foregroundStyle(ColorTokens.textSecondary)
+                        Picker("", selection: $bindableVM.defaultCurrency) {
+                            Text("INR (₹)").tag("INR")
+                            Text("USD ($)").tag("USD")
+                            Text("EUR (€)").tag("EUR")
+                            Text("GBP (£)").tag("GBP")
+                        }
+                        .labelsHidden()
                     }
                     
                     Toggle(isOn: Binding(
@@ -85,6 +90,12 @@ public struct SettingsView: View {
                 
                 // MARK: - 3. Data Export & Backup
                 Section("Data Export & Backup") {
+                    Button {
+                        appState.presentSheet(.statementImport)
+                    } label: {
+                        Label("Import Bank Statement (CSV)", systemImage: "doc.text.fill")
+                    }
+                    
                     // CSV Export
                     VStack(alignment: .leading, spacing: 6) {
                         Button {

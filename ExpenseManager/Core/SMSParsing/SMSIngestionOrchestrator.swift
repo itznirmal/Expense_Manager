@@ -64,7 +64,14 @@ public final class SMSIngestionOrchestrator: Sendable {
                 currencyCode: bankParsed.currencyCode,
                 merchantName: bankParsed.merchant,
                 inferredCategory: bankParsed.inferredCategory,
-                accountSuggestion: bankParsed.bankName ?? "Bank Account",
+                accountSuggestion: {
+                    if let bank = bankParsed.bankName, let mask = bankParsed.accountMask, !mask.isEmpty {
+                        let digits = mask.filter(\.isNumber)
+                        let lastFour = digits.count >= 4 ? String(digits.suffix(4)) : mask
+                        return "\(bank) •••• \(lastFour)"
+                    }
+                    return bankParsed.bankName ?? "Bank Account"
+                }(),
                 paymentMethod: bankParsed.paymentMethod,
                 transactionDate: bankParsed.date,
                 referenceNumber: bankParsed.referenceNumber,
@@ -197,7 +204,10 @@ public final class SMSIngestionOrchestrator: Sendable {
             merchantName: draft.merchantName,
             categorySuggestion: draft.inferredCategory,
             accountSuggestion: draft.accountSuggestion,
-            destinationAccountSuggestion: draft.type == .transfer ? "Savings Account" : nil,
+            destinationAccountSuggestion: {
+                if draft.type == .cashWithdrawal { return "Cash" }
+                return nil
+            }(),
             paymentMethod: draft.paymentMethod,
             transactionDate: draft.transactionDate,
             notes: nil, // GT-69 Fix: Zero raw bank SMS text stored in notes

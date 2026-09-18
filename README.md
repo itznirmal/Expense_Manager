@@ -78,11 +78,17 @@ A high-precision, privacy-first personal finance and expense tracking applicatio
 - Multi-faceted filter sheet: Date ranges, Transaction types, Categories, Accounts, Amount min/max.
 - Bulk selection mode: Select all, batch re-categorize, and batch delete.
 
-### 10. Data Export, Backup & CSV Formula Neutralization (AC-SEC-1)
-- **CSV Export**: Standardized RFC-4180 CSV export of all transaction records.
-- **AC-SEC-1 Formula Injection Neutralization**: All string fields starting with `=`, `+`, `-`, `@`, `\t`, `\r` are prefixed with `'` to prevent remote code execution / formula attacks in Microsoft Excel, Apple Numbers, and Google Sheets.
-- **JSON Backup Export & Import**: Full SwiftData database serialized to versioned JSON packages signed with SHA-256 cryptographic checksums.
-- **Data Purge / Factory Reset**: Clean database purge with default system categories restoration.
+### 11. Split Transactions
+- Split a grocery/shopping charge into multiple category lines that must sum exactly to the parent amount.
+- Designed for shared expenses and mixed-cart purchases — one of the most requested tracker features.
+
+### 12. Bank Statement CSV Import
+- Import historical ledger rows from bank CSV exports when SMS automation missed older spends.
+- Auto-detects Date / Amount / Merchant / Debit-Credit columns with duplicate fingerprint skipping.
+
+### 13. Home Screen Widgets
+- Small and medium WidgetKit glance cards for monthly spend and safe daily allowance.
+- Updated from the dashboard via App Group snapshot (`group.com.nirmal.ExpenseManager`).
 
 ---
 

@@ -71,6 +71,10 @@ public struct RootView: View {
                 TransactionFilterSheetView(viewModel: TransactionsListViewModel())
             case .transactionBatchCategorize:
                 Text("Batch Categorize")
+            case .splitTransaction(let tx):
+                SplitTransactionView(transaction: tx)
+            case .statementImport:
+                StatementImportView()
             }
         }
     }

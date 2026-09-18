@@ -123,14 +123,16 @@ public final class BudgetsViewModel {
         return remainingTotalBudget / Decimal(days)
     }
     
-    /// Budgets that are exceeding or pacing significantly faster than month elapsed percentage.
+    /// Budgets that are exceeding or pacing faster than the configured alert threshold relative to month pace.
     public var atRiskBudgets: [BudgetDTO] {
         let pace = monthPacePercent
         return budgets.filter { budget in
             guard budget.limitAmount > .zero else { return false }
             if budget.isExceeded { return true }
-            // If spend % exceeds elapsed month % by > 15%, mark as at-risk
-            return (budget.progressPercent - pace) > 0.15
+            let thresholdPercent = budget.alertThresholdPercent > 0 ? budget.alertThresholdPercent : 80
+            let threshold = Double(thresholdPercent) / 100.0
+            // At risk when spend progress exceeds both the user threshold and month elapsed pace.
+            return budget.progressPercent >= threshold && budget.progressPercent > pace
         }
     }
     

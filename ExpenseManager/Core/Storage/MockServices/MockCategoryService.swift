@@ -55,6 +55,43 @@ public final class MockCategoryService: CategoryServiceProtocol, @unchecked Send
         return newCat.id
     }
     
+    public func updateCategory(
+        id: String,
+        name: String,
+        icon: String,
+        colorToken: String,
+        type: CategoryType
+    ) async throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = categories.firstIndex(where: { $0.id == id }) else {
+            throw CategoryServiceError.categoryNotFound(id: id)
+        }
+        guard !categories[index].isSystem else {
+            throw CategoryServiceError.cannotModifySystemCategory
+        }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw CategoryServiceError.invalidName
+        }
+        categories[index].name = trimmed
+        categories[index].icon = icon
+        categories[index].colorToken = colorToken
+        categories[index].type = type
+    }
+    
+    public func deleteCategory(id: String) async throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = categories.firstIndex(where: { $0.id == id }) else {
+            throw CategoryServiceError.categoryNotFound(id: id)
+        }
+        guard !categories[index].isSystem else {
+            throw CategoryServiceError.cannotModifySystemCategory
+        }
+        categories.remove(at: index)
+    }
+    
     public func seedDefaultCategoriesIfNeeded() async throws {
         lock.lock()
         defer { lock.unlock() }

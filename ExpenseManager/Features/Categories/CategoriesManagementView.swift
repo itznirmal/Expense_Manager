@@ -36,6 +36,15 @@ public struct CategoriesManagementView: View {
                     Section("Custom Categories") {
                         ForEach(viewModel.customCategories) { cat in
                             categoryRow(cat)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        Task {
+                                            await viewModel.deleteCategory(id: cat.id, container: container, appState: appState)
+                                        }
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                         }
                     }
                 }

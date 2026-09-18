@@ -160,8 +160,8 @@ public final class DashboardViewModel {
                 self.monthPacePercent = min(1.0, max(0.0, day / Double(range.count)))
             }
             
-            // 4. Top Spending Categories
-            let expenseTx = monthTransactions.filter { $0.type == .expense && $0.amount > .zero }
+            // 4. Top Spending Categories (base currency only)
+            let expenseTx = monthTransactions.filter { $0.type == .expense && $0.amount > .zero && $0.currencyCode == baseCurrency }
             let grouped = Dictionary(grouping: expenseTx) { tx in
                 tx.categorySuggestion ?? "General"
             }
@@ -190,6 +190,23 @@ public final class DashboardViewModel {
             let allExpenses = try await container.transactionService.fetchTransactions(startDate: nil, endDate: nil, categoryID: nil, accountID: nil)
             self.recurringSubscriptions = container.merchantIntelligenceService.detectRecurringSubscriptions(from: allExpenses)
             self.anomalousAlerts = container.merchantIntelligenceService.identifyAnomalies(in: allExpenses, historicalDays: 90)
+            
+            // 7. Review count + home-screen widget snapshot
+            let pending = try await container.transactionService.fetchPendingReviewTransactions()
+            appState.pendingReviewCount = pending.count
+            
+            let remainingDays = max(1, calendar.range(of: .day, in: .month, for: now).map { $0.count - calendar.component(.day, from: now) + 1 } ?? 1)
+            let remainingBudget = max(.zero, overallBudgetLimit - overallBudgetSpent)
+            let daily = remainingBudget / Decimal(remainingDays)
+            WidgetSnapshotStore.save(WidgetFinanceSnapshot(
+                monthExpense: exp,
+                monthIncome: inc,
+                remainingBudget: remainingBudget,
+                dailyAllowance: daily,
+                currencyCode: baseCurrency,
+                pendingReviewCount: pending.count,
+                updatedAt: Date()
+            ))
             
         } catch {
             errorMessage = "Failed to load dashboard data: \(error.localizedDescription)"

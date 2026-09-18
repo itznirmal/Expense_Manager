@@ -25,6 +25,7 @@ public final class DependencyContainer {
     public let merchantRuleService: MerchantRuleServiceProtocol?
     public let fingerprintService: ImportFingerprintServiceProtocol?
     public let dataExportService: DataExportServiceProtocol
+    public let statementImportService: StatementCSVImportServiceProtocol
     
     // MARK: - Initializer
     
@@ -37,7 +38,8 @@ public final class DependencyContainer {
         merchantIntelligenceService: MerchantIntelligenceServiceProtocol = MerchantIntelligenceService.shared,
         merchantRuleService: MerchantRuleServiceProtocol? = nil,
         fingerprintService: ImportFingerprintServiceProtocol? = nil,
-        dataExportService: DataExportServiceProtocol? = nil
+        dataExportService: DataExportServiceProtocol? = nil,
+        statementImportService: StatementCSVImportServiceProtocol? = nil
     ) {
         self.transactionService = transactionService
         self.accountService = accountService
@@ -48,6 +50,10 @@ public final class DependencyContainer {
         self.merchantRuleService = merchantRuleService
         self.fingerprintService = fingerprintService
         self.dataExportService = dataExportService ?? MockDataExportService()
+        self.statementImportService = statementImportService ?? StatementCSVImportService(
+            transactionService: transactionService,
+            fingerprintService: fingerprintService
+        )
     }
     
     // MARK: - Factory Constructors
