@@ -1,9 +1,10 @@
 import XCTest
 
+@MainActor
 final class ExpenseManagerUITests: XCTestCase {
     private var app: XCUIApplication!
 
-    override func setUpWithError() throws {
+    private func launchFreshApp() {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-UITesting", "-UITestStore", UUID().uuidString, "-DisableAnimations", "-AppleLocale", "en_US"]
@@ -11,6 +12,7 @@ final class ExpenseManagerUITests: XCTestCase {
     }
 
     func testFirstUseAndThreePrimaryDestinations() {
+        launchFreshApp()
         let begin = app.buttons["beginTracking"]
         XCTAssertTrue(begin.waitForExistence(timeout: 15))
         begin.tap()
@@ -27,6 +29,7 @@ final class ExpenseManagerUITests: XCTestCase {
     }
 
     func testManualSaveSurvivesRelaunchAndCanBeEdited() {
+        launchFreshApp()
         let begin = app.buttons["beginTracking"]
         XCTAssertTrue(begin.waitForExistence(timeout: 15))
         begin.tap()
@@ -63,6 +66,7 @@ final class ExpenseManagerUITests: XCTestCase {
     }
 
     func testInvalidAmountCannotBeSaved() {
+        launchFreshApp()
         XCTAssertTrue(app.buttons["beginTracking"].waitForExistence(timeout: 15))
         app.buttons["beginTracking"].tap()
         let amount = app.textFields["expenseAmount"]
