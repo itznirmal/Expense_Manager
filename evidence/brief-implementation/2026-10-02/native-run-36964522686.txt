@@ -1,0 +1,6 @@
+Native run 36964522686 - commit 40f14176bbe0bc0209f64aaf666bbe0ded974eed
+URL: https://github.com/itznirmal/Expense_Manager/actions/runs/36964522686
+Runner: macOS 15, Xcode 16.4; project generation and simulator startup completed.
+Result: build failed; tests cancelled.
+Compiler blockers: nonisolated backup protocol validation, SwiftData model return types across actor boundaries, non-Sendable static Schema.Version storage, invalid App Intent parameter default, missing account/fingerprint mock conformance.
+Fixes are being committed and checked in the subsequent run. This run is not passing evidence.

@@ -36,7 +36,7 @@ public final class ParserOrchestrator: ParserServiceProtocol, Sendable {
         let draft = DeterministicTransactionParser.parse(text: trimmed)
         
         // 2. Check User-Defined Merchant Rules
-        var matchedRule: MerchantRuleRecord? = nil
+        var matchedRule: MerchantRuleDTO? = nil
         if let ruleService = merchantRuleService, !draft.merchantName.isEmpty {
             matchedRule = try? await ruleService.findMatchingRule(for: draft.merchantName)
         }

@@ -30,7 +30,7 @@ public protocol ImportFingerprintServiceProtocol: Sendable {
         timestamp: Date,
         source: String
     ) async throws
-    func fetchRecentFingerprints(limit: Int) async throws -> [ImportFingerprintRecord]
+    func fetchRecentFingerprints(limit: Int) async throws -> [ImportFingerprintDTO]
 }
 
 /// SwiftData persistent implementation of the Import Fingerprint Duplicate Detection Service.
@@ -120,17 +120,17 @@ public final class ImportFingerprintService: ImportFingerprintServiceProtocol, S
         try modelContext.save()
     }
     
-    public func fetchRecentFingerprints(limit: Int) async throws -> [ImportFingerprintRecord] {
+    public func fetchRecentFingerprints(limit: Int) async throws -> [ImportFingerprintDTO] {
         var descriptor = FetchDescriptor<ImportFingerprintRecord>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         descriptor.fetchLimit = limit
-        return try modelContext.fetch(descriptor)
+        return try modelContext.fetch(descriptor).map { $0.toDTO() }
     }
     
     // MARK: - SHA-256 Hash Helper
     
-    public static func computeSourceHash(
+    public nonisolated static func computeSourceHash(
         amount: Decimal,
         merchant: String,
         accountLastFour: String? = nil,

@@ -62,7 +62,7 @@ public struct LogExpenseIntent: AppIntent {
     public var amount: String
 
     @Parameter(title: "Currency", description: "Three-letter currency code (e.g. INR, USD)")
-    public var currencyCode: String = CurrencyFormatter.defaultCurrencyCode
+    public var currencyCode: String
     
     @Parameter(title: "Merchant", description: "Where the money was spent (e.g. Swiggy, Uber, Starbucks)")
     public var merchant: String
@@ -76,7 +76,7 @@ public struct LogExpenseIntent: AppIntent {
     @Parameter(title: "Notes", description: "Optional transaction notes or remarks")
     public var notes: String?
     
-    public init() {}
+    public init() { self.currencyCode = CurrencyFormatter.defaultCurrencyCode }
     
     public init(
         amount: String,

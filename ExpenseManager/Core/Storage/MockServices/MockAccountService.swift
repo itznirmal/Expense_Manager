@@ -77,14 +77,28 @@ public final class MockAccountService: AccountServiceProtocol, @unchecked Sendab
         }
     }
     
-    public func calculateNetWorth() async throws -> Decimal {
+    public func calculateNetWorth(in baseCurrency: String) async throws -> Decimal {
         lock.withLock {
             accounts
-                .filter { !$0.isArchived }
+                .filter { !$0.isArchived && $0.currencyCode == baseCurrency }
                 .reduce(Decimal.zero) { sum, acc in
                     sum + acc.balance
                 }
         }
+    }
+
+    public func calculateNetWorthByCurrency() async throws -> [String: Decimal] {
+        lock.withLock {
+            var netWorthByCurrency: [String: Decimal] = [:]
+            for account in accounts where !account.isArchived {
+                netWorthByCurrency[account.currencyCode, default: .zero] += account.balance
+            }
+            return netWorthByCurrency
+        }
+    }
+
+    public func calculateNetWorth() async throws -> Decimal {
+        try await calculateNetWorth(in: CurrencyFormatter.defaultCurrencyCode)
     }
     
     public static func defaultSampleAccounts() -> [AccountDTO] {

@@ -475,7 +475,7 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
         try BackupPayloadValidator.validate(data)
     }
 
-    public func validateBackupPayload(_ data: Data) throws -> BackupPayload {
+    public nonisolated func validateBackupPayload(_ data: Data) throws -> BackupPayload {
         try Self.validateBackupPayloadData(data)
     }
     

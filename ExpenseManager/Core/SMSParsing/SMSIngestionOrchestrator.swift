@@ -132,7 +132,7 @@ public final class SMSIngestionOrchestrator: Sendable {
         }
         
         // Step 4: Merchant Rule Resolution
-        var matchedRule: MerchantRuleRecord? = nil
+        var matchedRule: MerchantRuleDTO? = nil
         if let ruleSvc = merchantRuleService, !draft.merchantName.isEmpty {
             matchedRule = try? await ruleSvc.findMatchingRule(for: draft.merchantName)
         }

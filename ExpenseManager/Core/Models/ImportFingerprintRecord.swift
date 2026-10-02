@@ -44,3 +44,20 @@ public final class ImportFingerprintRecord {
         self.createdAt = createdAt
     }
 }
+
+public extension ImportFingerprintRecord {
+    /// Copies the persistence model into an actor-safe value type.
+    func toDTO() -> ImportFingerprintDTO {
+        ImportFingerprintDTO(
+            id: id,
+            sourceHash: sourceHash,
+            amount: amount,
+            normalizedMerchant: normalizedMerchant,
+            accountLastFour: accountLastFour,
+            transactionReference: transactionReference,
+            approximateTimestamp: approximateTimestamp,
+            source: source,
+            createdAt: createdAt
+        )
+    }
+}

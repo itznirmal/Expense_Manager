@@ -397,9 +397,12 @@ final class DashboardAndAnalyticsTests: XCTestCase {
         XCTAssertEqual(analyticsVM.categoryBreakdowns.first?.totalAmount, Decimal(70))
         XCTAssertEqual(analyticsVM.categoryBreakdowns.first?.refundAmount, Decimal(30))
 
-        analyticsVM.selectedCurrencyCode = "USD"
-        await analyticsVM.loadAnalytics(container: dependencyContainer)
+        let entryCurrency = CurrencyFormatter.defaultCurrencyCode
+        await analyticsVM.selectCurrency("USD", container: dependencyContainer)
         XCTAssertEqual(analyticsVM.totalExpense, Decimal(500))
         XCTAssertEqual(analyticsVM.refundAmount, .zero)
+        await analyticsVM.loadAnalytics(container: dependencyContainer)
+        XCTAssertEqual(analyticsVM.selectedCurrencyCode, "USD")
+        XCTAssertEqual(CurrencyFormatter.defaultCurrencyCode, entryCurrency, "A report filter must not change the next entry's currency.")
     }
 }

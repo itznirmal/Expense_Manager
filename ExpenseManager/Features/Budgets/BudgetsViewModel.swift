@@ -146,7 +146,6 @@ public final class BudgetsViewModel {
     public func selectCurrency(_ currencyCode: String, container: DependencyContainer) async {
         guard availableCurrencyCodes.contains(currencyCode) else { return }
         hasExplicitCurrencySelection = true
-        CurrencyFormatter.setPreferredCurrency(currencyCode)
         selectedCurrencyCode = currencyCode
         await loadBudgets(container: container)
     }

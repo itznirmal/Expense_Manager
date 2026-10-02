@@ -74,12 +74,11 @@ public final class DateFormatterHelper: Sendable {
         return calendar.date(from: components) ?? date
     }
     
-    /// Returns the end of the month (last second) for the given date.
+    /// Returns the last representable instant of the month for inclusive ledger filters.
     public func endOfMonth(for date: Date, calendar: Calendar = .current) -> Date {
         let start = startOfMonth(for: date, calendar: calendar)
-        if let nextMonth = calendar.date(byAdding: .month, value: 1, to: start),
-           let end = calendar.date(byAdding: .second, value: -1, to: nextMonth) {
-            return end
+        if let nextMonth = calendar.date(byAdding: .month, value: 1, to: start) {
+            return Date(timeIntervalSinceReferenceDate: nextMonth.timeIntervalSinceReferenceDate.nextDown)
         }
         return date
     }
@@ -91,9 +90,7 @@ public final class DateFormatterHelper: Sendable {
     
     /// Returns the end of the day (23:59:59).
     public func endOfDay(for date: Date, calendar: Calendar = .current) -> Date {
-        var components = DateComponents()
-        components.day = 1
-        components.second = -1
-        return calendar.date(byAdding: components, to: startOfDay(for: date, calendar: calendar)) ?? date
+        guard let nextDay = calendar.date(byAdding: .day, value: 1, to: startOfDay(for: date, calendar: calendar)) else { return date }
+        return Date(timeIntervalSinceReferenceDate: nextDay.timeIntervalSinceReferenceDate.nextDown)
     }
 }

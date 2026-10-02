@@ -11,7 +11,7 @@ import SwiftData
 
 /// Service protocol defining merchant categorization rule management.
 public protocol MerchantRuleServiceProtocol: Sendable {
-    func findMatchingRule(for merchantName: String) async throws -> MerchantRuleRecord?
+    func findMatchingRule(for merchantName: String) async throws -> MerchantRuleDTO?
     @discardableResult
     func saveRule(
         merchant: String,
@@ -30,7 +30,7 @@ public protocol MerchantRuleServiceProtocol: Sendable {
         confidence: Double
     ) async throws -> String
     
-    func fetchRules() async throws -> [MerchantRuleRecord]
+    func fetchRules() async throws -> [MerchantRuleDTO]
     func deleteRule(id: String) async throws
 }
 
@@ -66,7 +66,7 @@ public final class MerchantRuleService: MerchantRuleServiceProtocol, Sendable {
         self.modelContainer = modelContainer
     }
     
-    public func findMatchingRule(for merchantName: String) async throws -> MerchantRuleRecord? {
+    public func findMatchingRule(for merchantName: String) async throws -> MerchantRuleDTO? {
         let cleaned = merchantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !cleaned.isEmpty else { return nil }
         
@@ -78,19 +78,19 @@ public final class MerchantRuleService: MerchantRuleServiceProtocol, Sendable {
         for rule in rules {
             // 1. Exact normalized merchant match
             if rule.normalizedMerchant.lowercased() == cleaned {
-                return rule
+                return rule.toDTO()
             }
             // 2. Pattern regex match if pattern is non-empty
             if !rule.matchPattern.isEmpty,
                let regex = try? NSRegularExpression(pattern: rule.matchPattern, options: .caseInsensitive) {
                 let range = NSRange(location: 0, length: merchantName.utf16.count)
                 if regex.firstMatch(in: merchantName, options: [], range: range) != nil {
-                    return rule
+                    return rule.toDTO()
                 }
             }
             // 3. Substring match fallback
             if cleaned.contains(rule.normalizedMerchant.lowercased()) {
-                return rule
+                return rule.toDTO()
             }
         }
         
@@ -137,11 +137,11 @@ public final class MerchantRuleService: MerchantRuleServiceProtocol, Sendable {
         }
     }
     
-    public func fetchRules() async throws -> [MerchantRuleRecord] {
+    public func fetchRules() async throws -> [MerchantRuleDTO] {
         let descriptor = FetchDescriptor<MerchantRuleRecord>(
             sortBy: [SortDescriptor(\.normalizedMerchant, order: .forward)]
         )
-        return try modelContext.fetch(descriptor)
+        return try modelContext.fetch(descriptor).map { $0.toDTO() }
     }
     
     public func deleteRule(id: String) async throws {

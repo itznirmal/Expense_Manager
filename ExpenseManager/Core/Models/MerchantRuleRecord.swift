@@ -44,3 +44,19 @@ public final class MerchantRuleRecord {
         self.updatedAt = updatedAt
     }
 }
+
+extension MerchantRuleRecord {
+    func toDTO() -> MerchantRuleDTO {
+        MerchantRuleDTO(
+            id: id,
+            normalizedMerchant: normalizedMerchant,
+            preferredCategoryID: preferredCategoryID,
+            preferredAccountID: preferredAccountID,
+            preferredTags: preferredTags,
+            matchPattern: matchPattern,
+            confidence: confidence,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+}

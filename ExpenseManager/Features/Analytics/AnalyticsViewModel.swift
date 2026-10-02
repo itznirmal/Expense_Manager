@@ -180,6 +180,7 @@ public final class AnalyticsViewModel {
     
     public var isLoading: Bool = false
     public var errorMessage: String? = nil
+    private var hasExplicitCurrencySelection = false
     
     // MARK: - Computed Properties
     
@@ -210,7 +211,7 @@ public final class AnalyticsViewModel {
 
     public func selectCurrency(_ currencyCode: String, container: DependencyContainer) async {
         guard availableCurrencyCodes.contains(currencyCode) else { return }
-        CurrencyFormatter.setPreferredCurrency(currencyCode)
+        hasExplicitCurrencySelection = true
         selectedCurrencyCode = currencyCode
         await loadAnalytics(container: container)
     }
@@ -245,7 +246,7 @@ public final class AnalyticsViewModel {
                 allTransactions.map(\.currencyCode) + currentBudgets.map(\.currencyCode)
             )).sorted()
             let preferredCurrencyCode = CurrencyFormatter.defaultCurrencyCode
-            if availableCurrencyCodes.contains(preferredCurrencyCode) {
+            if !hasExplicitCurrencySelection && availableCurrencyCodes.contains(preferredCurrencyCode) {
                 selectedCurrencyCode = preferredCurrencyCode
             } else if let first = availableCurrencyCodes.first, !availableCurrencyCodes.contains(selectedCurrencyCode) {
                 selectedCurrencyCode = first

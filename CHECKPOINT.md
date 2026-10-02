@@ -307,3 +307,10 @@ Changed: Application source and focused regression tests; README now reports evi
 Evidence: Windows git diff --check and conflict/environment scans passed. No Swift/Xcode is installed here. Previous remote CI 35513421550 failed before compilation because its Xcode was too old for generated project format 77; updated CI selects Xcode 16.4 on macOS 15.
 Open: Native execution pending publication; physical-device authentication, snapshots, file protection, voice, Shortcuts, widgets, minimum-OS and actual-store upgrade still require evidence. Startup recovery now offers Retry or confirmed backup recovery into a separate protected store; originals stay preserved.
 Next: Push authorized source/brief, inspect the new native run, fix real compiler/test failures, and record its result. User will continue rendered/device checks on MacBook using docs/MacBook_Verification_Guide.md.
+
+## 2026-10-02 - First native compiler pass
+
+Published 40f1417 to GitHub main. Native macOS/Xcode run 36964522686 failed at app compilation and cancelled tests; logs and xcresult were retained. See evidence/brief-implementation/2026-10-02/native-run-36964522686.txt.
+Fixed the reported actor/protocol/parameter blockers: pure backup validation is nonisolated, Schema.Version is computed, App Intent currency is initialized through its wrapper, mocks match account/fingerprint contracts, and merchant/fingerprint services return immutable Sendable DTOs instead of SwiftData models. No unchecked Sendable was added to persistence models.
+Also corrected report currency filters so they retain their selection without changing the next entry's default, and inclusive accounting bounds so fractional entries in the final second remain included. New regression coverage accompanies these fixes.
+Next: publish compiler corrections and inspect the next native run. No native passing claim yet.
