@@ -10,8 +10,8 @@ import SwiftUI
 
 public struct ReviewQueueView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var viewModel = ReviewQueueViewModel()
     @State private var showAcceptAllConfirmation = false
@@ -296,5 +296,5 @@ public struct ReviewQueueView: View {
 #Preview {
     ReviewQueueView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

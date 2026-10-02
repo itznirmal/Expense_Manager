@@ -10,23 +10,29 @@ import SwiftUI
 
 public struct BudgetComposerView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     private let editingBudget: BudgetDTO?
     private let targetMonth: Date
     
     @State private var selectedCategoryID: String? = nil
+    @State private var selectedCurrencyCode: String
     @State private var limitAmountText: String = ""
     @State private var alertThreshold: Double = 80.0
     @State private var availableCategories: [CategoryDTO] = []
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
     
-    public init(budget: BudgetDTO? = nil, targetMonth: Date = Date()) {
+    public init(
+        budget: BudgetDTO? = nil,
+        targetMonth: Date = Date(),
+        currencyCode: String = CurrencyFormatter.defaultCurrencyCode
+    ) {
         self.editingBudget = budget
         self.targetMonth = budget?.month ?? targetMonth
         _selectedCategoryID = State(initialValue: budget?.categoryID)
+        _selectedCurrencyCode = State(initialValue: budget?.currencyCode ?? currencyCode)
         _limitAmountText = State(initialValue: budget != nil && budget!.limitAmount > 0 ? "\(budget!.limitAmount)" : "")
         _alertThreshold = State(initialValue: Double(budget?.alertThresholdPercent ?? 80))
     }
@@ -50,6 +56,13 @@ public struct BudgetComposerView: View {
                         Text("Month")
                         Spacer()
                         Text(DateFormatterHelper.shared.monthYear(for: targetMonth))
+                            .foregroundStyle(ColorTokens.textSecondary)
+                    }
+
+                    HStack {
+                        Text("Currency")
+                        Spacer()
+                        Text(selectedCurrencyCode)
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
                 }
@@ -173,12 +186,13 @@ public struct BudgetComposerView: View {
                 categoryID: selectedCategoryID,
                 limitAmount: limitAmount,
                 month: targetMonth,
-                alertThresholdPercent: Int(alertThreshold)
+                alertThresholdPercent: Int(alertThreshold),
+                currencyCode: selectedCurrencyCode
             )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             appState.showToast(
                 title: "Budget Saved",
-                message: "\(CurrencyFormatter.shared.format(amount: limitAmount)) for \(DateFormatterHelper.shared.monthYear(for: targetMonth))",
+                message: "\(CurrencyFormatter.shared.format(amount: limitAmount, currencyCode: selectedCurrencyCode)) for \(DateFormatterHelper.shared.monthYear(for: targetMonth))",
                 type: .success
             )
             dismiss()
@@ -192,5 +206,5 @@ public struct BudgetComposerView: View {
 #Preview {
     BudgetComposerView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

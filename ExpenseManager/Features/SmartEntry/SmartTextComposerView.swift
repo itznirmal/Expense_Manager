@@ -10,8 +10,8 @@ import SwiftUI
 
 public struct SmartTextComposerView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var viewModel = SmartTextComposerViewModel()
     @FocusState private var isInputFocused: Bool
@@ -334,5 +334,5 @@ public struct SmartTextComposerView: View {
 #Preview {
     SmartTextComposerView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

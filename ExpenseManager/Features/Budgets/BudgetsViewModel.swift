@@ -17,6 +17,11 @@ public final class BudgetsViewModel {
     
     public var budgets: [BudgetDTO] = []
     public var selectedMonth: Date = Date()
+    /// Currency currently shown by the Plan screen. Budgets in other
+    /// currencies remain discoverable through `availableCurrencyCodes`.
+    public var selectedCurrencyCode: String = CurrencyFormatter.defaultCurrencyCode
+    public var availableCurrencyCodes: [String] = []
+    private var hasExplicitCurrencySelection = false
     public var isLoading: Bool = false
     public var errorMessage: String? = nil
     
@@ -53,9 +58,9 @@ public final class BudgetsViewModel {
     
     public var overallProgressPercent: Double {
         guard totalLimit > .zero else { return 0 }
-        let spent = NSDecimalNumber(decimal: totalSpent).doubleValue
-        let limit = NSDecimalNumber(decimal: totalLimit).doubleValue
-        return min(1.0, max(0.0, spent / limit))
+        let ratio = totalSpent / totalLimit
+        let ratioDouble = NSDecimalNumber(decimal: ratio).doubleValue
+        return min(1.0, max(0.0, ratioDouble))
     }
     
     // MARK: - Month Pace Calculations
@@ -123,18 +128,28 @@ public final class BudgetsViewModel {
         return remainingTotalBudget / Decimal(days)
     }
     
-    /// Budgets that are exceeding or pacing significantly faster than month elapsed percentage.
+    /// Budgets that are exceeding or pacing faster than the configured alert threshold relative to month pace.
     public var atRiskBudgets: [BudgetDTO] {
         let pace = monthPacePercent
         return budgets.filter { budget in
             guard budget.limitAmount > .zero else { return false }
             if budget.isExceeded { return true }
-            // If spend % exceeds elapsed month % by > 15%, mark as at-risk
-            return (budget.progressPercent - pace) > 0.15
+            let thresholdPercent = budget.alertThresholdPercent > 0 ? budget.alertThresholdPercent : 80
+            let threshold = Double(thresholdPercent) / 100.0
+            // At risk when spend progress exceeds both the user threshold and month elapsed pace.
+            return budget.progressPercent >= threshold && budget.progressPercent > pace
         }
     }
     
     public init() {}
+
+    public func selectCurrency(_ currencyCode: String, container: DependencyContainer) async {
+        guard availableCurrencyCodes.contains(currencyCode) else { return }
+        hasExplicitCurrencySelection = true
+        CurrencyFormatter.setPreferredCurrency(currencyCode)
+        selectedCurrencyCode = currencyCode
+        await loadBudgets(container: container)
+    }
     
     // MARK: - Actions
     
@@ -144,7 +159,31 @@ public final class BudgetsViewModel {
         defer { isLoading = false }
         
         do {
-            budgets = try await container.budgetService.fetchBudgets(for: selectedMonth)
+            let calendar = Calendar.current
+            let monthStart = DateFormatterHelper.shared.startOfMonth(for: selectedMonth, calendar: calendar)
+            let monthEnd = DateFormatterHelper.shared.endOfMonth(for: selectedMonth, calendar: calendar)
+            async let fetchedBudgets = container.budgetService.fetchBudgets(for: selectedMonth, currencyCode: nil)
+            async let fetchedTransactions = container.transactionService.fetchTransactions(
+                startDate: monthStart,
+                endDate: monthEnd,
+                categoryID: nil,
+                accountID: nil
+            )
+            async let fetchedAccounts = container.accountService.fetchAccounts(includeArchived: false)
+            let (allBudgets, monthTransactions, accounts) = try await (fetchedBudgets, fetchedTransactions, fetchedAccounts)
+            availableCurrencyCodes = Array(Set(
+                CurrencyFormatter.supportedCurrencyCodes +
+                allBudgets.map(\.currencyCode) +
+                monthTransactions.map(\.currencyCode) +
+                accounts.map(\.currencyCode)
+            )).sorted()
+            let preferredCurrencyCode = CurrencyFormatter.defaultCurrencyCode
+            if !hasExplicitCurrencySelection && availableCurrencyCodes.contains(preferredCurrencyCode) {
+                selectedCurrencyCode = preferredCurrencyCode
+            } else if let first = availableCurrencyCodes.first, !availableCurrencyCodes.contains(selectedCurrencyCode) {
+                selectedCurrencyCode = first
+            }
+            budgets = allBudgets.filter { $0.currencyCode == selectedCurrencyCode }
         } catch {
             errorMessage = "Failed to load budgets: \(error.localizedDescription)"
         }
@@ -180,7 +219,8 @@ public final class BudgetsViewModel {
                 categoryID: categoryID,
                 limitAmount: limitAmount,
                 month: selectedMonth,
-                alertThresholdPercent: threshold
+                alertThresholdPercent: threshold,
+                currencyCode: selectedCurrencyCode
             )
             await loadBudgets(container: container)
             return true

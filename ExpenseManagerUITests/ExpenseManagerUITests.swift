@@ -1,78 +1,75 @@
-//
-//  ExpenseManagerUITests.swift
-//  ExpenseManagerUITests
-//
-//  Created for Expense Manager iOS.
-//  UI Tests verifying critical end-to-end user navigation workflows.
-//
-
 import XCTest
 
 final class ExpenseManagerUITests: XCTestCase {
-
     private var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-UITesting", "-DisableAnimations"]
+        app.launchArguments = ["-UITesting", "-UITestStore", UUID().uuidString, "-DisableAnimations", "-AppleLocale", "en_US"]
         app.launch()
     }
 
-    override func tearDownWithError() throws {
-        app = nil
+    func testFirstUseAndThreePrimaryDestinations() {
+        let begin = app.buttons["beginTracking"]
+        XCTAssertTrue(begin.waitForExistence(timeout: 15))
+        begin.tap()
+        XCTAssertTrue(app.textFields["expenseAmount"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        for title in ["Today", "History", "Plan"] {
+            let tab = app.tabBars.buttons[title]
+            XCTAssertTrue(tab.waitForExistence(timeout: 5), "Missing required destination \(title)")
+            tab.tap()
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+        }
+        XCTAssertFalse(app.tabBars.buttons["Settings"].exists)
+        XCTAssertFalse(app.tabBars.buttons["Analytics"].exists)
     }
 
-    /// Verifies that the app launches cleanly into Dashboard and allows seamless tab navigation.
-    func testAppLaunchAndTabBarNavigation() throws {
-        // 1. Verify Dashboard Root Navigation Title exists
-        let dashboardNavTitle = app.navigationBars["Expense Manager"]
-        XCTAssertTrue(dashboardNavTitle.waitForExistence(timeout: 5.0), "Dashboard should be visible upon launch.")
-
-        // 2. Navigate to Transactions Tab
-        let transactionsTab = app.tabBars.buttons["Transactions"]
-        if transactionsTab.exists {
-            transactionsTab.tap()
-            let transactionsNavTitle = app.navigationBars["Transactions"]
-            XCTAssertTrue(transactionsNavTitle.waitForExistence(timeout: 3.0), "Transactions screen should load.")
-        }
-
-        // 3. Navigate to Budgets Tab
-        let budgetsTab = app.tabBars.buttons["Budgets"]
-        if budgetsTab.exists {
-            budgetsTab.tap()
-            let budgetsNavTitle = app.navigationBars["Budgets"]
-            XCTAssertTrue(budgetsNavTitle.waitForExistence(timeout: 3.0), "Budgets screen should load.")
-        }
-
-        // 4. Navigate to Analytics Tab
-        let analyticsTab = app.tabBars.buttons["Analytics"]
-        if analyticsTab.exists {
-            analyticsTab.tap()
-            let analyticsNavTitle = app.navigationBars["Analytics"]
-            XCTAssertTrue(analyticsNavTitle.waitForExistence(timeout: 3.0), "Analytics screen should load.")
-        }
-
-        // 5. Navigate to Settings Tab
-        let settingsTab = app.tabBars.buttons["Settings"]
-        if settingsTab.exists {
-            settingsTab.tap()
-            let settingsNavTitle = app.navigationBars["Settings"]
-            XCTAssertTrue(settingsNavTitle.waitForExistence(timeout: 3.0), "Settings screen should load.")
-        }
+    func testManualSaveSurvivesRelaunchAndCanBeEdited() {
+        let begin = app.buttons["beginTracking"]
+        XCTAssertTrue(begin.waitForExistence(timeout: 15))
+        begin.tap()
+        let amount = app.textFields["expenseAmount"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 5))
+        amount.tap()
+        amount.typeText("125.50")
+        app.buttons["More details"].tap()
+        let merchant = app.textFields["expenseMerchant"]
+        XCTAssertTrue(merchant.waitForExistence(timeout: 5))
+        merchant.tap()
+        merchant.typeText("Test Cafe")
+        let save = app.buttons["saveExpense"]
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.buttons["addExpense"].waitForExistence(timeout: 8))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Test Cafe"].waitForExistence(timeout: 15))
+        app.staticTexts["Test Cafe"].tap()
+        let edit = app.buttons["editEntry"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        edit.tap()
+        XCTAssertTrue(amount.waitForExistence(timeout: 5))
+        let existing = amount.value as? String ?? ""
+        XCTAssertFalse(existing.isEmpty)
+        amount.tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count) + "150.25")
+        app.buttons["saveExpense"].tap()
+        XCTAssertTrue(app.buttons["addExpense"].waitForExistence(timeout: 8))
+        let total = app.staticTexts["monthlySpending"]
+        XCTAssertTrue(total.waitForExistence(timeout: 5))
+        XCTAssertTrue(total.label.contains("150.25"), "The edited entry must replace the old amount.")
     }
 
-    /// Verifies that the Smart Entry creation flow sheet can be presented and dismissed.
-    func testSmartEntrySheetPresentation() throws {
-        let smartAddButton = app.buttons["Smart Add"]
-        if smartAddButton.waitForExistence(timeout: 3.0) {
-            smartAddButton.tap()
-            
-            // Verify Smart Text entry modal is presented
-            let cancelOrDoneButton = app.buttons["Cancel"]
-            if cancelOrDoneButton.waitForExistence(timeout: 3.0) {
-                cancelOrDoneButton.tap()
-            }
-        }
+    func testInvalidAmountCannotBeSaved() {
+        XCTAssertTrue(app.buttons["beginTracking"].waitForExistence(timeout: 15))
+        app.buttons["beginTracking"].tap()
+        let amount = app.textFields["expenseAmount"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["saveExpense"].isEnabled)
+        amount.tap()
+        amount.typeText("0")
+        XCTAssertFalse(app.buttons["saveExpense"].isEnabled)
     }
 }

@@ -10,8 +10,8 @@ import SwiftUI
 import Charts
 
 public struct AnalyticsOverviewView: View {
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var viewModel = AnalyticsViewModel()
     @State private var selectedCategory: CategorySpendingItem? = nil
@@ -22,6 +22,10 @@ public struct AnalyticsOverviewView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    if viewModel.availableCurrencyCodes.count > 1 {
+                        currencyPicker
+                    }
+
                     // Time Horizon Segmented Picker
                     horizonPicker
                     
@@ -52,7 +56,7 @@ public struct AnalyticsOverviewView: View {
             }
             .background(ColorTokens.backgroundPrimary)
             .navigationTitle("Analytics")
-            .task {
+            .task(id: appState.dataRevision) {
                 await viewModel.loadAnalytics(container: container)
             }
             .refreshable {
@@ -62,6 +66,21 @@ public struct AnalyticsOverviewView: View {
     }
     
     // MARK: - 1. Time Horizon Picker
+
+    private var currencyPicker: some View {
+        Picker("Currency", selection: $viewModel.selectedCurrencyCode) {
+            ForEach(viewModel.availableCurrencyCodes, id: \.self) { code in
+                Text(code).tag(code)
+            }
+        }
+        .pickerStyle(.menu)
+        .onChange(of: viewModel.selectedCurrencyCode) { _, newValue in
+            Task {
+                await viewModel.selectCurrency(newValue, container: container)
+            }
+        }
+        .accessibilityLabel("Analytics currency")
+    }
     
     private var horizonPicker: some View {
         Picker("Time Horizon", selection: $viewModel.selectedHorizon) {
@@ -90,7 +109,7 @@ public struct AnalyticsOverviewView: View {
                 )
                 
                 statTile(
-                    title: "Expenses",
+                    title: viewModel.totalExpenseLabel,
                     amount: viewModel.totalExpense,
                     color: ColorTokens.expenseAccent,
                     icon: "arrow.up.right"
@@ -109,7 +128,7 @@ public struct AnalyticsOverviewView: View {
                                 .foregroundStyle(ColorTokens.textSecondary)
                         }
                         
-                        Text(CurrencyFormatter.shared.format(amount: viewModel.netSavings))
+                        Text(CurrencyFormatter.shared.format(amount: viewModel.netSavings, currencyCode: viewModel.selectedCurrencyCode))
                             .font(Typography.headline)
                             .foregroundStyle(viewModel.netSavings >= 0 ? ColorTokens.incomeAccent : ColorTokens.expenseAccent)
                             .lineLimit(1)
@@ -133,7 +152,7 @@ public struct AnalyticsOverviewView: View {
                                 .foregroundStyle(ColorTokens.textSecondary)
                         }
                         
-                        Text(CurrencyFormatter.shared.format(amount: viewModel.averageDailyExpense, fractionDigits: 0))
+                        Text(CurrencyFormatter.shared.format(amount: viewModel.averageDailyExpense, currencyCode: viewModel.selectedCurrencyCode, fractionDigits: 0))
                             .font(Typography.headline)
                             .foregroundStyle(ColorTokens.textPrimary)
                             .lineLimit(1)
@@ -161,7 +180,7 @@ public struct AnalyticsOverviewView: View {
                         .foregroundStyle(ColorTokens.textSecondary)
                 }
                 
-                Text(CurrencyFormatter.shared.format(amount: amount))
+                Text(CurrencyFormatter.shared.format(amount: amount, currencyCode: viewModel.selectedCurrencyCode))
                     .font(Typography.headline)
                     .foregroundStyle(color)
                     .lineLimit(1)
@@ -183,7 +202,7 @@ public struct AnalyticsOverviewView: View {
                     Spacer()
                     HStack(spacing: 12) {
                         chartLegendPill(title: "Income", color: ColorTokens.incomeAccent)
-                        chartLegendPill(title: "Expense", color: ColorTokens.expenseAccent)
+                        chartLegendPill(title: viewModel.totalExpenseLabel, color: ColorTokens.expenseAccent)
                     }
                 }
                 
@@ -202,18 +221,18 @@ public struct AnalyticsOverviewView: View {
                             y: .value("Amount", item.expenseDouble)
                         )
                         .foregroundStyle(ColorTokens.expenseAccent)
-                        .position(by: .value("Type", "Expense"))
+                            .position(by: .value("Type", viewModel.totalExpenseLabel))
                         .cornerRadius(4)
                     }
                 }
                 .frame(height: 180)
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel("Monthly Income versus Expenses bar chart for \(viewModel.selectedHorizon.displayName). Total Income: \(CurrencyFormatter.shared.format(amount: viewModel.totalIncome)), Total Expense: \(CurrencyFormatter.shared.format(amount: viewModel.totalExpense)).")
+                .accessibilityLabel("Monthly Income versus \(viewModel.totalExpenseLabel) bar chart for \(viewModel.selectedHorizon.displayName). Total Income: \(CurrencyFormatter.shared.format(amount: viewModel.totalIncome, currencyCode: viewModel.selectedCurrencyCode)), Total \(viewModel.totalExpenseLabel): \(CurrencyFormatter.shared.format(amount: viewModel.totalExpense, currencyCode: viewModel.selectedCurrencyCode)).")
                 .chartYAxis {
                     AxisMarks(position: .leading) { value in
                         if let doubleValue = value.as(Double.self) {
                             AxisValueLabel {
-                                Text(CurrencyFormatter.shared.formatCompact(amount: Decimal(doubleValue)))
+                                Text(CurrencyFormatter.shared.formatCompact(amount: Decimal(doubleValue), currencyCode: viewModel.selectedCurrencyCode))
                                     .font(Typography.caption2)
                                     .foregroundStyle(ColorTokens.textTertiary)
                             }
@@ -251,7 +270,10 @@ public struct AnalyticsOverviewView: View {
                     // Donut Chart
                     Chart(viewModel.categoryBreakdowns) { item in
                         SectorMark(
-                            angle: .value("Amount", item.totalAmountDouble),
+                            // Refund-only categories retain their negative
+                            // Decimal net value in the legend; charts use a
+                            // non-negative geometry value.
+                            angle: .value("Amount", max(0, item.totalAmountDouble)),
                             innerRadius: .ratio(0.618),
                             angularInset: 1.5
                         )
@@ -294,7 +316,7 @@ public struct AnalyticsOverviewView: View {
                                 }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("\(item.categoryName): \(CurrencyFormatter.shared.format(amount: item.totalAmount)), \(Int(item.percentage * 100)) percent of total spending.")
+                            .accessibilityLabel("\(item.categoryName): \(item.amountLabel) \(CurrencyFormatter.shared.format(amount: item.totalAmount, currencyCode: viewModel.selectedCurrencyCode)), \(Int(item.percentage * 100)) percent of total spending.")
                         }
                     }
                 }
@@ -307,14 +329,14 @@ public struct AnalyticsOverviewView: View {
                             Text(selected.categoryName)
                                 .font(Typography.subheadline.weight(.semibold))
                                 .foregroundStyle(ColorTokens.textPrimary)
-                            Text("\(selected.transactionCount) transactions")
+                            Text("\(selected.amountLabel), \(selected.transactionCount) transactions")
                                 .font(Typography.caption2)
                                 .foregroundStyle(ColorTokens.textSecondary)
                         }
                         
                         Spacer()
                         
-                        Text(CurrencyFormatter.shared.format(amount: selected.totalAmount))
+                        Text(CurrencyFormatter.shared.format(amount: selected.totalAmount, currencyCode: viewModel.selectedCurrencyCode))
                             .font(Typography.headline)
                             .foregroundStyle(ColorTokens.textPrimary)
                     }
@@ -371,7 +393,7 @@ public struct AnalyticsOverviewView: View {
                     AxisMarks(position: .leading) { value in
                         if let doubleValue = value.as(Double.self) {
                             AxisValueLabel {
-                                Text(CurrencyFormatter.shared.formatCompact(amount: Decimal(doubleValue)))
+                                Text(CurrencyFormatter.shared.formatCompact(amount: Decimal(doubleValue), currencyCode: viewModel.selectedCurrencyCode))
                                     .font(Typography.caption2)
                                     .foregroundStyle(ColorTokens.textTertiary)
                             }
@@ -404,14 +426,14 @@ public struct AnalyticsOverviewView: View {
                                     .font(Typography.headline)
                                     .foregroundStyle(ColorTokens.textPrimary)
                                 
-                                Text("\(item.transactionCount) transactions • \(item.categorySuggestion ?? "General")")
+                                Text("\(item.amountLabel) • \(item.transactionCount) transactions • \(item.categorySuggestion ?? "General")")
                                     .font(Typography.caption)
                                     .foregroundStyle(ColorTokens.textSecondary)
                             }
                             
                             Spacer()
                             
-                            Text(CurrencyFormatter.shared.format(amount: item.totalAmount))
+                            Text(CurrencyFormatter.shared.format(amount: item.totalAmount, currencyCode: viewModel.selectedCurrencyCode))
                                 .font(Typography.headline)
                                 .foregroundStyle(ColorTokens.textPrimary)
                         }
@@ -442,5 +464,5 @@ public struct AnalyticsOverviewView: View {
 #Preview {
     AnalyticsOverviewView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

@@ -10,15 +10,15 @@ import SwiftUI
 
 public struct TransactionDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
-    
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
+
     public let transaction: TransactionCandidate
     public var onEdit: ((TransactionCandidate) -> Void)? = nil
     public var onDelete: ((String) -> Void)? = nil
-    
+
     @State private var isShowingDeleteConfirmation: Bool = false
-    
+
     public init(
         transaction: TransactionCandidate,
         onEdit: ((TransactionCandidate) -> Void)? = nil,
@@ -28,25 +28,25 @@ public struct TransactionDetailView: View {
         self.onEdit = onEdit
         self.onDelete = onDelete
     }
-    
+
     public var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     // Hero Amount Header
                     heroAmountCard
-                    
+
                     // Transaction Details Section
                     detailsSection
-                    
+
                     // Ingestion & Audit Metadata Section
                     metadataSection
-                    
+
                     // Notes & Tags
                     if !(transaction.notes?.isEmpty ?? true) || !transaction.tags.isEmpty {
                         notesAndTagsSection
                     }
-                    
+
                     // Action Buttons
                     actionButtonsSection
                 }
@@ -61,16 +61,21 @@ public struct TransactionDetailView: View {
                         dismiss()
                     }
                 }
-                
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
-                        dismiss()
-                        onEdit?(transaction)
+                        if let onEdit {
+                            dismiss()
+                            onEdit(transaction)
+                        } else {
+                            appState.replaceSheet(with: .manualEntry(candidate: transaction))
+                        }
                     }) {
                         Text("Edit")
                             .font(Typography.headline)
                             .foregroundStyle(ColorTokens.brandPrimary)
                     }
+                    .accessibilityIdentifier("editEntry")
                 }
             }
             .confirmationDialog(
@@ -98,9 +103,9 @@ public struct TransactionDetailView: View {
             }
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var heroAmountCard: some View {
         CardContainer {
             VStack(spacing: 8) {
@@ -110,15 +115,15 @@ public struct TransactionDetailView: View {
                     .frame(width: 60, height: 60)
                     .background(typeColor.opacity(0.12))
                     .clipShape(Circle())
-                
+
                 Text(CurrencyFormatter.shared.format(amount: transaction.amount, currencyCode: transaction.currencyCode))
                     .font(Typography.amountHero)
                     .foregroundStyle(typeColor)
-                
+
                 Text(transaction.merchantName.isEmpty ? transaction.type.displayName : transaction.merchantName)
                     .font(Typography.title3.weight(.semibold))
                     .foregroundStyle(ColorTokens.textPrimary)
-                
+
                 Text(transaction.type.displayName)
                     .font(Typography.caption.weight(.medium))
                     .padding(.horizontal, 10)
@@ -131,7 +136,7 @@ public struct TransactionDetailView: View {
             .padding(.vertical, 8)
         }
     }
-    
+
     private var detailsSection: some View {
         CardContainer {
             VStack(spacing: 12) {
@@ -141,19 +146,19 @@ public struct TransactionDetailView: View {
                     icon: "tag.fill",
                     iconColor: ColorTokens.brandPrimary
                 )
-                
+
                 Divider().overlay(ColorTokens.separator)
-                
+
                 detailRow(
                     label: transaction.type == .transfer ? "From Account" : "Account",
                     value: transaction.accountSuggestion ?? "Default Account",
                     icon: "building.columns.fill",
                     iconColor: ColorTokens.incomeAccent
                 )
-                
+
                 if let dest = transaction.destinationAccountSuggestion, transaction.type == .transfer {
                     Divider().overlay(ColorTokens.separator)
-                    
+
                     detailRow(
                         label: "To Account",
                         value: dest,
@@ -161,19 +166,19 @@ public struct TransactionDetailView: View {
                         iconColor: ColorTokens.transferAccent
                     )
                 }
-                
+
                 Divider().overlay(ColorTokens.separator)
-                
+
                 detailRow(
                     label: "Date & Time",
                     value: "\(DateFormatterHelper.shared.shortDate(for: transaction.transactionDate)) at \(DateFormatterHelper.shared.timeOnly(for: transaction.transactionDate))",
                     icon: "calendar",
                     iconColor: ColorTokens.warningAccent
                 )
-                
+
                 if let payment = transaction.paymentMethod {
                     Divider().overlay(ColorTokens.separator)
-                    
+
                     detailRow(
                         label: "Payment Method",
                         value: payment.displayName,
@@ -184,21 +189,21 @@ public struct TransactionDetailView: View {
             }
         }
     }
-    
+
     private var metadataSection: some View {
         CardContainer {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Source & Ingestion Metadata")
                     .font(Typography.caption.weight(.semibold))
                     .foregroundStyle(ColorTokens.textSecondary)
-                
+
                 detailRow(
                     label: "Channel Source",
                     value: transaction.source.displayName,
                     icon: "sparkles",
                     iconColor: ColorTokens.brandPrimary
                 )
-                
+
                 if let ref = transaction.sourceReference, !ref.isEmpty {
                     Divider().overlay(ColorTokens.separator)
                     detailRow(
@@ -208,9 +213,9 @@ public struct TransactionDetailView: View {
                         iconColor: ColorTokens.textSecondary
                     )
                 }
-                
+
                 Divider().overlay(ColorTokens.separator)
-                
+
                 HStack {
                     HStack(spacing: 8) {
                         Image(systemName: "gauge.with.needle.fill")
@@ -225,7 +230,7 @@ public struct TransactionDetailView: View {
                         .font(Typography.subheadline.weight(.semibold))
                         .foregroundStyle(ColorTokens.textPrimary)
                 }
-                
+
                 if !transaction.warnings.isEmpty {
                     Divider().overlay(ColorTokens.separator)
                     VStack(alignment: .leading, spacing: 4) {
@@ -244,7 +249,7 @@ public struct TransactionDetailView: View {
             }
         }
     }
-    
+
     private var notesAndTagsSection: some View {
         CardContainer {
             VStack(alignment: .leading, spacing: 10) {
@@ -258,13 +263,13 @@ public struct TransactionDetailView: View {
                             .foregroundStyle(ColorTokens.textPrimary)
                     }
                 }
-                
+
                 if !transaction.tags.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Tags")
                             .font(Typography.caption.weight(.semibold))
                             .foregroundStyle(ColorTokens.textSecondary)
-                        
+
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(transaction.tags, id: \.self) { tag in
@@ -284,9 +289,29 @@ public struct TransactionDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-    
+
     private var actionButtonsSection: some View {
         VStack(spacing: 12) {
+            if transaction.type == .expense || transaction.type == .income || transaction.type == .refund {
+                Button {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        appState.presentSheet(.splitTransaction(transaction: transaction))
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.triangle.branch")
+                        Text("Split Transaction")
+                    }
+                    .font(Typography.headline)
+                    .foregroundStyle(ColorTokens.brandPrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(ColorTokens.brandPrimary.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+
             Button(action: {
                 isShowingDeleteConfirmation = true
             }) {
@@ -303,7 +328,7 @@ public struct TransactionDetailView: View {
             }
         }
     }
-    
+
     private func detailRow(label: String, value: String, icon: String, iconColor: Color) -> some View {
         HStack {
             HStack(spacing: 8) {
@@ -320,7 +345,7 @@ public struct TransactionDetailView: View {
                 .foregroundStyle(ColorTokens.textPrimary)
         }
     }
-    
+
     private var typeColor: Color {
         switch transaction.type {
         case .expense: return ColorTokens.expenseAccent
@@ -350,5 +375,5 @@ public struct TransactionDetailView: View {
         )
     )
     .environment(AppState())
-    .environment(\.dependencyContainer, .mock())
+    .environment(DependencyContainer.mock())
 }

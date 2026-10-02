@@ -11,7 +11,7 @@ import Foundation
 public final class MockCategoryService: CategoryServiceProtocol, @unchecked Sendable {
     private var categories: [CategoryDTO] = []
     private let lock = NSLock()
-    
+
     public init(sampleData: [CategoryDTO]? = nil) {
         if let sampleData = sampleData {
             self.categories = sampleData
@@ -19,20 +19,20 @@ public final class MockCategoryService: CategoryServiceProtocol, @unchecked Send
             self.categories = Self.defaultSystemCategories()
         }
     }
-    
+
     public func fetchCategories(type: CategoryType?) async throws -> [CategoryDTO] {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let type = type else { return categories }
-        return categories.filter { $0.type == type || $0.type == .both }
+        return lock.withLock {
+            guard let type = type else { return categories }
+            return categories.filter { $0.type == type || $0.type == .both }
+        }
     }
-    
+
     public func getCategory(id: String) async throws -> CategoryDTO? {
-        lock.lock()
-        defer { lock.unlock() }
-        return categories.first(where: { $0.id == id })
+        return lock.withLock {
+            categories.first(where: { $0.id == id })
+        }
     }
-    
+
     public func createCategory(
         name: String,
         parentCategoryID: String?,
@@ -40,29 +40,66 @@ public final class MockCategoryService: CategoryServiceProtocol, @unchecked Send
         colorToken: String,
         type: CategoryType
     ) async throws -> String {
-        lock.lock()
-        defer { lock.unlock() }
-        let newCat = CategoryDTO(
-            id: UUID().uuidString,
-            name: name,
-            parentCategoryID: parentCategoryID,
-            icon: icon,
-            colorToken: colorToken,
-            type: type,
-            isSystem: false
-        )
-        categories.append(newCat)
-        return newCat.id
-    }
-    
-    public func seedDefaultCategoriesIfNeeded() async throws {
-        lock.lock()
-        defer { lock.unlock() }
-        if categories.isEmpty {
-            categories = Self.defaultSystemCategories()
+        return lock.withLock {
+            let newCat = CategoryDTO(
+                id: UUID().uuidString,
+                name: name,
+                parentCategoryID: parentCategoryID,
+                icon: icon,
+                colorToken: colorToken,
+                type: type,
+                isSystem: false
+            )
+            categories.append(newCat)
+            return newCat.id
         }
     }
-    
+
+    public func updateCategory(
+        id: String,
+        name: String,
+        icon: String,
+        colorToken: String,
+        type: CategoryType
+    ) async throws {
+        try lock.withLock {
+            guard let index = categories.firstIndex(where: { $0.id == id }) else {
+                throw CategoryServiceError.categoryNotFound(id: id)
+            }
+            guard !categories[index].isSystem else {
+                throw CategoryServiceError.cannotModifySystemCategory
+            }
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw CategoryServiceError.invalidName
+            }
+            categories[index].name = trimmed
+            categories[index].icon = icon
+            categories[index].colorToken = colorToken
+            categories[index].type = type
+        }
+    }
+
+    public func deleteCategory(id: String) async throws {
+        try lock.withLock {
+            guard let index = categories.firstIndex(where: { $0.id == id }) else {
+                throw CategoryServiceError.categoryNotFound(id: id)
+            }
+            guard !categories[index].isSystem else {
+                throw CategoryServiceError.cannotModifySystemCategory
+            }
+            categories.remove(at: index)
+        }
+    }
+
+    public func seedDefaultCategoriesIfNeeded() async throws {
+        lock.withLock {
+            if categories.isEmpty {
+                categories = Self.defaultSystemCategories()
+            }
+        }
+    }
+
     public static func defaultSystemCategories() -> [CategoryDTO] {
         [
             CategoryDTO(id: "cat_food", name: "Food & Dining", icon: "fork.knife", colorToken: "orange", type: .expense, isSystem: true),

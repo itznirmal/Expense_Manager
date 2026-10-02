@@ -145,11 +145,24 @@ public struct TagBackupDTO: Codable, Sendable, Equatable {
 public struct BudgetBackupDTO: Codable, Sendable, Equatable {
     public let id: String
     public let categoryID: String?
+    /// ISO 4217 currency code. Legacy schema-version-1 budgets omit this key and decode as INR.
+    public let currencyCode: String
     public let limitAmount: Decimal
     public let month: Date
     public let alertThresholdPercent: Int
     public let createdAt: Date
     public let updatedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case categoryID
+        case currencyCode
+        case limitAmount
+        case month
+        case alertThresholdPercent
+        case createdAt
+        case updatedAt
+    }
     
     public init(
         id: String,
@@ -158,15 +171,45 @@ public struct BudgetBackupDTO: Codable, Sendable, Equatable {
         month: Date,
         alertThresholdPercent: Int,
         createdAt: Date,
-        updatedAt: Date
+        updatedAt: Date,
+        currencyCode: String = CurrencyFormatter.defaultCurrencyCode
     ) {
         self.id = id
         self.categoryID = categoryID
+        self.currencyCode = currencyCode
         self.limitAmount = limitAmount
         self.month = month
         self.alertThresholdPercent = alertThresholdPercent
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.categoryID = try container.decodeIfPresent(String.self, forKey: .categoryID)
+        self.currencyCode = try container.decodeIfPresent(String.self, forKey: .currencyCode)
+            ?? CurrencyFormatter.defaultCurrencyCode
+        self.limitAmount = try container.decode(Decimal.self, forKey: .limitAmount)
+        self.month = try container.decode(Date.self, forKey: .month)
+        self.alertThresholdPercent = try container.decode(Int.self, forKey: .alertThresholdPercent)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(categoryID, forKey: .categoryID)
+        // Keep legacy INR backups byte-compatible while preserving explicit non-INR currencies.
+        if currencyCode != CurrencyFormatter.defaultCurrencyCode {
+            try container.encode(currencyCode, forKey: .currencyCode)
+        }
+        try container.encode(limitAmount, forKey: .limitAmount)
+        try container.encode(month, forKey: .month)
+        try container.encode(alertThresholdPercent, forKey: .alertThresholdPercent)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 }
 
@@ -265,6 +308,10 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
     public let isAccepted: Bool
     /// Review diagnostics attached to the transaction. Missing in legacy backups, where it defaults to an empty list.
     public let reviewReasons: [String]
+    /// Parent transaction identifier for split child rows.
+    public let parentTransactionID: String?
+    /// Shared split group identifier for all rows produced by one split operation.
+    public let splitGroupID: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -287,6 +334,8 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         case isPendingReview
         case isAccepted
         case reviewReasons
+        case parentTransactionID
+        case splitGroupID
     }
     
     public init(
@@ -309,7 +358,9 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         updatedAt: Date,
         isPendingReview: Bool = false,
         isAccepted: Bool = true,
-        reviewReasons: [String] = []
+        reviewReasons: [String] = [],
+        parentTransactionID: String? = nil,
+        splitGroupID: String? = nil
     ) {
         self.id = id
         self.type = type
@@ -331,6 +382,8 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         self.isPendingReview = isPendingReview
         self.isAccepted = isAccepted
         self.reviewReasons = reviewReasons
+        self.parentTransactionID = parentTransactionID
+        self.splitGroupID = splitGroupID
     }
 
     public init(from decoder: Decoder) throws {
@@ -352,9 +405,12 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         self.confidence = try container.decode(Double.self, forKey: .confidence)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
-        self.isPendingReview = try container.decodeIfPresent(Bool.self, forKey: .isPendingReview) ?? false
-        self.isAccepted = try container.decodeIfPresent(Bool.self, forKey: .isAccepted) ?? true
+        let pendingReview = try container.decodeIfPresent(Bool.self, forKey: .isPendingReview) ?? false
+        self.isPendingReview = pendingReview
+        self.isAccepted = try container.decodeIfPresent(Bool.self, forKey: .isAccepted) ?? !pendingReview
         self.reviewReasons = try container.decodeIfPresent([String].self, forKey: .reviewReasons) ?? []
+        self.parentTransactionID = try container.decodeIfPresent(String.self, forKey: .parentTransactionID)
+        self.splitGroupID = try container.decodeIfPresent(String.self, forKey: .splitGroupID)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -388,6 +444,8 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         if !reviewReasons.isEmpty {
             try container.encode(reviewReasons, forKey: .reviewReasons)
         }
+        try container.encodeIfPresent(parentTransactionID, forKey: .parentTransactionID)
+        try container.encodeIfPresent(splitGroupID, forKey: .splitGroupID)
     }
 }
 
@@ -420,7 +478,8 @@ public struct BackupData: Codable, Sendable, Equatable {
     }
 }
 
-/// Root versioned JSON backup payload with SHA-256 integrity checksum.
+/// Root versioned JSON backup payload with an unkeyed SHA-256 corruption checksum.
+/// The checksum detects accidental or incomplete file changes; it is not encryption or a signature.
 public struct BackupPayload: Codable, Sendable, Equatable {
     public let schemaVersion: Int
     public let appVersion: String
@@ -507,6 +566,7 @@ public enum DataExportError: LocalizedError, Sendable, Equatable {
 // MARK: - Service Protocol
 
 /// Service protocol defining CSV export, JSON backup creation, JSON restoration with SHA-256 checksum verification, and data purging.
+/// Backup checksums are unkeyed integrity checks and do not authenticate or encrypt a file.
 public protocol DataExportServiceProtocol: Sendable {
     /// Exports transactions to a standardized CSV format with formula neutralization (AC-SEC-1).
     func exportTransactionsToCSV(startDate: Date?, endDate: Date?) async throws -> String

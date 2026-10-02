@@ -12,7 +12,7 @@ import SwiftUI
 /// verify field extraction across Indian banks, duplicate detection, and confidence scoring.
 public struct SMSDiagnosticsView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.dependencyContainer) private var container
+    @Environment(DependencyContainer.self) private var container
     @State private var viewModel = SMSDiagnosticsViewModel()
     
     public init() {}
@@ -366,5 +366,5 @@ public struct SMSDiagnosticsView: View {
 #Preview("SMS Diagnostics") {
     SMSDiagnosticsView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

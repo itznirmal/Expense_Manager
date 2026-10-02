@@ -15,16 +15,16 @@ public enum Typography {
     // MARK: - Display & Financial Amounts
     
     /// Hero financial amount on Dashboard (e.g. Total Net Balance)
-    public static let amountHero: Font = .system(size: 34, weight: .bold, design: .rounded)
+    public static let amountHero: Font = .system(.largeTitle, design: .rounded).weight(.bold)
     
     /// Large monetary amounts (e.g. Account Cards, Budget Totals)
-    public static let amountLarge: Font = .system(size: 28, weight: .bold, design: .rounded)
+    public static let amountLarge: Font = .system(.title, design: .rounded).weight(.bold)
     
     /// Medium monetary amounts (e.g. Transaction Row Amounts)
-    public static let amountMedium: Font = .system(size: 20, weight: .semibold, design: .rounded)
+    public static let amountMedium: Font = .system(.title3, design: .rounded).weight(.semibold)
     
     /// Small monetary amounts (e.g. Sub-item badges, micro-charts)
-    public static let amountSmall: Font = .system(size: 15, weight: .semibold, design: .rounded)
+    public static let amountSmall: Font = .system(.subheadline, design: .rounded).weight(.semibold)
     
     // MARK: - Standard Dynamic Type Scale
     

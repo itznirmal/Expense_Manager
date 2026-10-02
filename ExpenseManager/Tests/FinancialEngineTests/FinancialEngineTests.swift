@@ -592,10 +592,10 @@ final class FinancialEngineTests: XCTestCase {
         XCTAssertEqual(postBillPayNetWorth, Decimal(45000), "Net Worth must remain ₹45,000 after internal transfer / credit card bill payment")
     }
     
-    // MARK: - 14. Negative Transaction Amount Normalization (ISS-002 / ISS-003)
+    // MARK: - 14. Invalid Transaction Amount Rejection
     
     @MainActor
-    func testNegativeTransactionAmountNormalization() async throws {
+    func testNegativeTransactionAmountIsRejectedWithoutMutation() async throws {
         let accountId = try await accountService.createAccount(
             name: "Savings Account",
             type: .bank,
@@ -606,7 +606,7 @@ final class FinancialEngineTests: XCTestCase {
             lastFour: "4321"
         )
         
-        // Create an expense with a negative amount (-2500)
+        // A negative amount must fail instead of being normalized with abs().
         let negativeExpenseCandidate = TransactionCandidate(
             type: .expense,
             amount: Decimal(-2500),
@@ -616,22 +616,36 @@ final class FinancialEngineTests: XCTestCase {
             source: .manual
         )
         
-        let txId = try await transactionService.createTransaction(negativeExpenseCandidate)
-        
-        // Account balance must be debited (10,000 - 2,500 = 7,500), NOT credited
+        do {
+            _ = try await transactionService.createTransaction(negativeExpenseCandidate)
+            XCTFail("Negative amounts must be rejected")
+        } catch {
+            // Expected.
+        }
         let account = try await accountService.getAccount(id: accountId)
-        XCTAssertEqual(account?.balance, Decimal(7500), "Negative amount must be normalized to positive so expense debits account balance")
-        
+        XCTAssertEqual(account?.balance, Decimal(10000))
         let recent = try await transactionService.fetchRecentTransactions(limit: 1)
-        XCTAssertEqual(recent.first?.amount, Decimal(2500), "Stored transaction amount must be positive 2,500")
-        
-        // Update transaction with negative amount (-4000)
-        var updatedCandidate = negativeExpenseCandidate
+        XCTAssertTrue(recent.isEmpty)
+
+        let positive = TransactionCandidate(
+            type: .expense,
+            amount: Decimal(2500),
+            currencyCode: "INR",
+            merchantName: "Grocery Store",
+            accountSuggestion: accountId,
+            source: .manual
+        )
+        let txId = try await transactionService.createTransaction(positive)
+        var updatedCandidate = positive
         updatedCandidate.amount = Decimal(-4000)
-        try await transactionService.updateTransaction(id: txId, candidate: updatedCandidate)
-        
+        do {
+            try await transactionService.updateTransaction(id: txId, candidate: updatedCandidate)
+            XCTFail("Negative replacement amounts must be rejected")
+        } catch {
+            // Expected.
+        }
         let updatedAccount = try await accountService.getAccount(id: accountId)
-        XCTAssertEqual(updatedAccount?.balance, Decimal(6000), "Updating with negative amount must normalize and result in 10,000 - 4,000 = 6,000")
+        XCTAssertEqual(updatedAccount?.balance, Decimal(7500))
     }
     
     // MARK: - 15. Pending-Review Transaction Lifecycle

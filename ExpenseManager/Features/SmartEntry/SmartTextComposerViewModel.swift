@@ -113,7 +113,7 @@ public final class SmartTextComposerViewModel {
     }
     
     public func saveTransaction(container: DependencyContainer, appState: AppState) async -> Bool {
-        guard let candidate = activeCandidate, candidate.amount > .zero else {
+        guard var candidate = activeCandidate, candidate.amount > .zero else {
             errorMessage = "Cannot save transaction without a valid amount."
             return false
         }
@@ -121,6 +121,9 @@ public final class SmartTextComposerViewModel {
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
+        // Save is the explicit confirmation of the editable candidate.
+        candidate.needsReview = false
+        candidate.notes = nil
         
         do {
             try await container.transactionService.createTransaction(candidate)
@@ -141,7 +144,7 @@ public final class SmartTextComposerViewModel {
             
             appState.showToast(
                 title: "Transaction Saved",
-                message: "\(CurrencyFormatter.shared.format(amount: candidate.amount)) • \(candidate.merchantName)",
+                message: "\(CurrencyFormatter.shared.format(amount: candidate.amount, currencyCode: candidate.currencyCode)) • \(candidate.merchantName)",
                 type: .success
             )
             return true

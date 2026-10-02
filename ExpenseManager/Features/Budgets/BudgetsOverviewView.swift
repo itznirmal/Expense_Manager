@@ -9,8 +9,8 @@
 import SwiftUI
 
 public struct BudgetsOverviewView: View {
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var viewModel = BudgetsViewModel()
     
@@ -22,6 +22,10 @@ public struct BudgetsOverviewView: View {
                 VStack(spacing: 20) {
                     // Month Navigation Bar
                     monthNavigationBar
+
+                    if viewModel.availableCurrencyCodes.count > 1 {
+                        currencyPicker
+                    }
                     
                     // Daily Allowance Banner
                     if viewModel.dailyAllowance > .zero && viewModel.remainingDaysInMonth > 0 {
@@ -33,8 +37,12 @@ public struct BudgetsOverviewView: View {
                         atRiskWarningBanner
                     }
                     
-                    // Overall Monthly Budget Hero Card
-                    overallBudgetHeroCard
+                    // Overall Monthly Budget Hero Card (optional)
+                    if viewModel.overallBudget != nil {
+                        overallBudgetHeroCard
+                    } else if viewModel.categoryBudgets.isEmpty {
+                        optionalBudgetCard
+                    }
                     
                     // Category Budgets Header
                     HStack {
@@ -77,7 +85,7 @@ public struct BudgetsOverviewView: View {
                 .padding()
             }
             .background(ColorTokens.backgroundPrimary)
-            .navigationTitle("Budgets")
+            .navigationTitle("Plan")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
@@ -91,7 +99,11 @@ public struct BudgetsOverviewView: View {
                 }
             }
             .sheet(isPresented: $viewModel.isComposerPresented) {
-                BudgetComposerView(budget: viewModel.selectedBudgetForEdit, targetMonth: viewModel.selectedMonth)
+                BudgetComposerView(
+                    budget: viewModel.selectedBudgetForEdit,
+                    targetMonth: viewModel.selectedMonth,
+                    currencyCode: viewModel.selectedCurrencyCode
+                )
             }
             .onChange(of: viewModel.isComposerPresented) { oldValue, newValue in
                 if !newValue {
@@ -100,7 +112,7 @@ public struct BudgetsOverviewView: View {
                     }
                 }
             }
-            .task {
+            .task(id: appState.dataRevision) {
                 await viewModel.loadBudgets(container: container)
             }
             .refreshable {
@@ -110,6 +122,41 @@ public struct BudgetsOverviewView: View {
     }
     
     // MARK: - Subviews
+
+    private var currencyPicker: some View {
+        Picker("Currency", selection: $viewModel.selectedCurrencyCode) {
+            ForEach(viewModel.availableCurrencyCodes, id: \.self) { code in
+                Text(code).tag(code)
+            }
+        }
+        .pickerStyle(.menu)
+        .onChange(of: viewModel.selectedCurrencyCode) { _, newValue in
+            Task {
+                await viewModel.selectCurrency(newValue, container: container)
+            }
+        }
+        .accessibilityLabel("Budget currency")
+    }
+
+    private var optionalBudgetCard: some View {
+        CardContainer {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Budgets are optional")
+                    .font(Typography.headline)
+                    .foregroundStyle(ColorTokens.textPrimary)
+                Text("Track spending without a limit, or add a monthly limit when planning is useful.")
+                    .font(Typography.subheadline)
+                    .foregroundStyle(ColorTokens.textSecondary)
+                Button("Set a monthly limit") {
+                    viewModel.selectedBudgetForEdit = nil
+                    viewModel.isComposerPresented = true
+                }
+                .font(Typography.subheadline.weight(.semibold))
+                .foregroundStyle(ColorTokens.brandPrimary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
     
     private var monthNavigationBar: some View {
         HStack {
@@ -162,7 +209,7 @@ public struct BudgetsOverviewView: View {
                 .foregroundStyle(ColorTokens.brandPrimary)
             
             VStack(alignment: .leading, spacing: 2) {
-                Text("Daily Allowance: \(CurrencyFormatter.shared.format(amount: viewModel.dailyAllowance, fractionDigits: 0))/day")
+                Text("Daily Allowance: \(CurrencyFormatter.shared.format(amount: viewModel.dailyAllowance, currencyCode: viewModel.selectedCurrencyCode, fractionDigits: 0))/day")
                     .font(Typography.subheadline.weight(.semibold))
                     .foregroundStyle(ColorTokens.textPrimary)
                 
@@ -236,15 +283,15 @@ public struct BudgetsOverviewView: View {
                     .frame(width: 64, height: 64)
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Overall Monthly Spend")
+                        Text(viewModel.overallBudget?.spentLabel ?? "Monthly spending")
                             .font(Typography.subheadline)
                             .foregroundStyle(ColorTokens.textSecondary)
                         
-                        Text(CurrencyFormatter.shared.format(amount: viewModel.totalSpent))
+                        Text(CurrencyFormatter.shared.format(amount: viewModel.totalSpent, currencyCode: viewModel.selectedCurrencyCode))
                             .font(Typography.amountHero)
                             .foregroundStyle(ColorTokens.textPrimary)
                         
-                        Text("Limit: \(CurrencyFormatter.shared.format(amount: viewModel.totalLimit))")
+                        Text("Limit: \(CurrencyFormatter.shared.format(amount: viewModel.totalLimit, currencyCode: viewModel.selectedCurrencyCode))")
                             .font(Typography.caption)
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
@@ -252,7 +299,7 @@ public struct BudgetsOverviewView: View {
                     Spacer()
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Overall monthly budget: \(CurrencyFormatter.shared.format(amount: viewModel.totalSpent)) spent of \(CurrencyFormatter.shared.format(amount: viewModel.totalLimit)) limit. \(Int(viewModel.overallProgressPercent * 100)) percent spent.")
+                .accessibilityLabel("Overall monthly budget: \(CurrencyFormatter.shared.format(amount: viewModel.totalSpent, currencyCode: viewModel.selectedCurrencyCode)) spent of \(CurrencyFormatter.shared.format(amount: viewModel.totalLimit, currencyCode: viewModel.selectedCurrencyCode)) limit. \(Int(viewModel.overallProgressPercent * 100)) percent spent.")
                 
                 Divider()
                     .overlay(ColorTokens.separator)
@@ -263,7 +310,7 @@ public struct BudgetsOverviewView: View {
                         Text("Projected EOM Spend")
                             .font(Typography.caption)
                             .foregroundStyle(ColorTokens.textSecondary)
-                        Text(CurrencyFormatter.shared.format(amount: viewModel.projectedMonthSpend, fractionDigits: 0))
+                        Text(CurrencyFormatter.shared.format(amount: viewModel.projectedMonthSpend, currencyCode: viewModel.selectedCurrencyCode, fractionDigits: 0))
                             .font(Typography.subheadline.weight(.semibold))
                             .foregroundStyle(viewModel.projectedMonthSpend > viewModel.totalLimit && viewModel.totalLimit > 0 ? ColorTokens.criticalAccent : ColorTokens.textPrimary)
                     }
@@ -318,13 +365,13 @@ public struct BudgetsOverviewView: View {
                     .frame(height: 8)
                     
                     HStack {
-                        Text("Spent: \(CurrencyFormatter.shared.format(amount: budget.spentAmount, fractionDigits: 0))")
+                        Text("\(budget.spentLabel): \(CurrencyFormatter.shared.format(amount: budget.spentAmount, currencyCode: viewModel.selectedCurrencyCode, fractionDigits: 0))")
                             .font(Typography.caption)
                             .foregroundStyle(ColorTokens.textSecondary)
                         
                         Spacer()
                         
-                        Text("Limit: \(CurrencyFormatter.shared.format(amount: budget.limitAmount, fractionDigits: 0))")
+                        Text("Limit: \(CurrencyFormatter.shared.format(amount: budget.limitAmount, currencyCode: viewModel.selectedCurrencyCode, fractionDigits: 0))")
                             .font(Typography.caption.weight(.semibold))
                             .foregroundStyle(ColorTokens.textPrimary)
                     }
@@ -358,5 +405,5 @@ public struct BudgetsOverviewView: View {
 #Preview {
     BudgetsOverviewView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

@@ -20,11 +20,18 @@ final class AppIntentsVerificationTests: XCTestCase {
         // but we verify the type exists and is accessible.
         XCTAssertNotNil(intent)
         XCTAssertEqual(LogExpenseIntent.title.key, "Log Expense")
+        XCTAssertTrue(LogExpenseIntent.openAppWhenRun)
     }
     
     func testParseTextExpenseIntentInitialization() {
         let intent = ParseTextExpenseIntent()
         XCTAssertNotNil(intent)
-        XCTAssertEqual(ParseTextExpenseIntent.title.key, "Parse Expense Text")
+        XCTAssertEqual(ParseTextExpenseIntent.title.key, "Parse Text or SMS Expense")
+        XCTAssertTrue(ParseTextExpenseIntent.openAppWhenRun)
+    }
+
+    func testSensitiveIntentsRequireLocalDeviceAuthentication() {
+        XCTAssertEqual(LogExpenseIntent.authenticationPolicy, .requiresLocalDeviceAuthentication)
+        XCTAssertEqual(ParseTextExpenseIntent.authenticationPolicy, .requiresLocalDeviceAuthentication)
     }
 }

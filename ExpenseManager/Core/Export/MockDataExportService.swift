@@ -81,18 +81,7 @@ public final class MockDataExportService: DataExportServiceProtocol, @unchecked 
     
     public func validateBackupPayload(_ data: Data) throws -> BackupPayload {
         if shouldFail { throw failureError }
-        let decoder = DataExportService.createJSONDecoder()
-        let payload = try decoder.decode(BackupPayload.self, from: data)
-        
-        let encoder = DataExportService.createJSONEncoder()
-        let reencoded = try encoder.encode(payload.data)
-        let computed = DataExportService.computeSHA256(for: reencoded)
-        
-        guard computed.lowercased() == payload.checksum.lowercased() else {
-            throw DataExportError.checksumMismatch(expected: payload.checksum, actual: computed)
-        }
-        
-        return payload
+        return try BackupPayloadValidator.validate(data)
     }
     
     public func restoreJSONBackup(from data: Data) async throws -> BackupRestoreResult {
@@ -104,7 +93,7 @@ public final class MockDataExportService: DataExportServiceProtocol, @unchecked 
             transactionsRestored: payload.data.transactions.count,
             budgetsRestored: payload.data.budgets.count,
             rulesRestored: payload.data.merchantRules.count,
-            fingerprintsRestored: payload.data.importFingerprints.count
+            fingerprintsRestored: payload.data.importFingerprints?.count ?? 0
         )
         self.lastRestoreResult = result
         return result

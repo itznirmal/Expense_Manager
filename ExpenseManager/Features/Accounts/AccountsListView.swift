@@ -9,8 +9,8 @@
 import SwiftUI
 
 public struct AccountsListView: View {
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var viewModel = AccountsListViewModel()
     
@@ -228,5 +228,5 @@ public struct AccountsListView: View {
 #Preview {
     AccountsListView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

@@ -18,8 +18,12 @@ public final class SettingsViewModel {
     
     // MARK: - State Properties
     
-    public var defaultCurrency: String = "INR"
-    public var autoParseSMS: Bool = true
+    public var defaultCurrency: String {
+        didSet { UserDefaults.standard.set(defaultCurrency, forKey: "defaultCurrency") }
+    }
+    public var autoParseSMS: Bool {
+        didSet { UserDefaults.standard.set(autoParseSMS, forKey: "autoParseSMS") }
+    }
     
     public var isExportingCSV: Bool = false
     public var csvExportURL: URL? = nil
@@ -46,45 +50,19 @@ public final class SettingsViewModel {
     
     public init(exportService: DataExportServiceProtocol = MockDataExportService()) {
         self.exportService = exportService
+        let storedCurrency = UserDefaults.standard.string(forKey: "defaultCurrency") ?? "INR"
+        self.defaultCurrency = storedCurrency
+        if UserDefaults.standard.object(forKey: "autoParseSMS") == nil {
+            self.autoParseSMS = true
+        } else {
+            self.autoParseSMS = UserDefaults.standard.bool(forKey: "autoParseSMS")
+        }
     }
     
     // MARK: - Biometric Toggle Check (GT-66)
     
     public func toggleBiometrics(enable: Bool, appState: AppState) {
-        let context = LAContext()
-        var authError: NSError?
-        
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) else {
-            appState.requireBiometrics = false
-            appState.showToast(
-                title: "Authentication Unavailable",
-                message: authError?.localizedDescription ?? "Face ID or Passcode is not configured on this device.",
-                type: .warning
-            )
-            return
-        }
-        
-        let reason = enable ? "Authenticate to enable App Lock." : "Authenticate to disable App Lock."
-        
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, error in
-            Task { @MainActor in
-                if success {
-                    appState.requireBiometrics = enable
-                    appState.showToast(
-                        title: "Security Updated",
-                        message: enable ? "App Lock enabled." : "App Lock disabled.",
-                        type: .success
-                    )
-                } else {
-                    // Revert UI if needed, but since it's an intent, we just don't change the state.
-                    appState.showToast(
-                        title: "Authentication Failed",
-                        message: "Unable to change security settings.",
-                        type: .error
-                    )
-                }
-            }
-        }
+        appState.requestAppLockChange(to: enable)
     }
     
     // MARK: - CSV Export (AC-SEC-1 Protected)
@@ -110,7 +88,7 @@ public final class SettingsViewModel {
             self.csvExportURL = fileURL
             appState.showToast(
                 title: "CSV Export Ready",
-                message: "Formula injection neutralized (AC-SEC-1). Tap Share to save.",
+                message: "Tap Share to save your ledger.",
                 type: .success
             )
         } catch {
@@ -214,8 +192,8 @@ public final class SettingsViewModel {
         do {
             try await exportService.purgeAllData(restoreDefaultCategories: true)
             appState.showToast(
-                title: "Database Reset",
-                message: "All user records wiped. Default categories restored.",
+                title: "Active ledger cleared",
+                message: "Default categories restored. Exported backups and preserved recovery stores remain separate.",
                 type: .info
             )
         } catch {

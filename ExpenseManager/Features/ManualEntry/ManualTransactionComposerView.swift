@@ -10,11 +10,12 @@ import SwiftUI
 
 public struct ManualTransactionComposerView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var viewModel: ManualTransactionComposerViewModel
     @FocusState private var isAmountFocused: Bool
+    @State private var showDetails = false
     
     public init(candidate: TransactionCandidate? = nil) {
         _viewModel = State(initialValue: ManualTransactionComposerViewModel(candidate: candidate))
@@ -31,7 +32,6 @@ public struct ManualTransactionComposerView: View {
                     amountEntryCard
                     
                     // 3. Merchant / Payee Name & Recent Chips
-                    merchantSection
                     
                     // 4. Category Grid Selector
                     if !viewModel.isTransfer {
@@ -39,17 +39,17 @@ public struct ManualTransactionComposerView: View {
                     }
                     
                     // 5. Account Selection
-                    accountSection
-                    
-                    // 6. Date & Time Picker
-                    dateSection
-                    
-                    // 7. Notes & Tags (Optional)
-                    notesAndTagsSection
-                    
-                    // 8. Remember Merchant Rule Toggle
-                    if !viewModel.merchantName.isEmpty && viewModel.selectedCategoryID != nil {
-                        rememberRuleToggle
+                    DisclosureGroup("More details", isExpanded: $showDetails) {
+                        VStack(spacing: 16) {
+                            merchantSection
+                            accountSection
+                            dateSection
+                            notesAndTagsSection
+                            if !viewModel.merchantName.isEmpty && viewModel.selectedCategoryID != nil {
+                                rememberRuleToggle
+                            }
+                        }
+                        .padding(.top, 12)
                     }
                     
                     // Validation Error Banner
@@ -80,7 +80,7 @@ public struct ManualTransactionComposerView: View {
                 .padding()
             }
             .background(ColorTokens.backgroundPrimary)
-            .navigationTitle("New Transaction")
+            .navigationTitle(viewModel.editingCandidateId == nil ? "Add expense" : "Edit entry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -99,10 +99,18 @@ public struct ManualTransactionComposerView: View {
                     }
                     .disabled(!viewModel.canSave || viewModel.isSaving)
                     .fontWeight(.semibold)
+                    .accessibilityIdentifier("saveExpense")
                 }
             }
             .task {
                 await viewModel.loadData(container: container)
+                if viewModel.editingCandidateId != nil || viewModel.isTransfer || viewModel.isCashWithdrawal { showDetails = true }
+            }
+            .onChange(of: viewModel.type) { _, _ in
+                if viewModel.isTransfer || viewModel.isCashWithdrawal { showDetails = true }
+            }
+            .onChange(of: viewModel.currencyCode) { _, _ in
+                viewModel.selectCurrency()
             }
             .onAppear {
                 isAmountFocused = true
@@ -113,10 +121,11 @@ public struct ManualTransactionComposerView: View {
     // MARK: - Subviews
     
     private var typeSegmentedControl: some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 8) {
             typeButton(title: "Expense", type: .expense, icon: "arrow.up.right", color: ColorTokens.expenseAccent)
             typeButton(title: "Income", type: .income, icon: "arrow.down.left", color: ColorTokens.incomeAccent)
             typeButton(title: "Transfer", type: .transfer, icon: "arrow.left.arrow.right", color: ColorTokens.transferAccent)
+            typeButton(title: "Refund", type: .refund, icon: "arrow.uturn.backward", color: ColorTokens.incomeAccent)
         }
         .padding(4)
         .background(ColorTokens.backgroundSecondary)
@@ -148,7 +157,7 @@ public struct ManualTransactionComposerView: View {
         CardContainer {
             VStack(spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("₹")
+                    Text(CurrencyFormatter.shared.symbol(for: viewModel.currencyCode))
                         .font(Typography.title.weight(.bold))
                         .foregroundStyle(ColorTokens.textSecondary)
                     
@@ -158,6 +167,8 @@ public struct ManualTransactionComposerView: View {
                         .focused($isAmountFocused)
                         .foregroundStyle(ColorTokens.textPrimary)
                         .multilineTextAlignment(.leading)
+                        .accessibilityLabel("Amount")
+                        .accessibilityIdentifier("expenseAmount")
                 }
                 
                 Divider()
@@ -168,6 +179,11 @@ public struct ManualTransactionComposerView: View {
                     presetChip("+500", delta: 500)
                     presetChip("+1,000", delta: 1000)
                     presetChip("+2,000", delta: 2000)
+                }
+                Picker("Entry currency", selection: $viewModel.currencyCode) {
+                    ForEach(viewModel.availableCurrencyCodes, id: \.self) { code in
+                        Text(code).tag(code)
+                    }
                 }
             }
         }
@@ -185,6 +201,7 @@ public struct ManualTransactionComposerView: View {
                 .background(ColorTokens.brandPrimary.opacity(0.1))
                 .clipShape(Capsule())
         }
+        .frame(minHeight: 44)
     }
     
     private var merchantSection: some View {
@@ -195,6 +212,7 @@ public struct ManualTransactionComposerView: View {
                     .foregroundStyle(ColorTokens.textSecondary)
                 
                 TextField(viewModel.isTransfer ? "e.g. Savings transfer" : "e.g. Swiggy, Starbucks, Shell", text: $viewModel.merchantName)
+                    .accessibilityIdentifier("expenseMerchant")
                     .font(Typography.body)
                     .padding(10)
                     .background(ColorTokens.backgroundPrimary)
@@ -281,7 +299,7 @@ public struct ManualTransactionComposerView: View {
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        ForEach(viewModel.availableAccounts) { account in
+                        ForEach(viewModel.matchingCurrencyAccounts) { account in
                             accountChip(account: account, isSelected: viewModel.selectedAccountID == account.id) {
                                 viewModel.selectedAccountID = account.id
                             }
@@ -299,7 +317,7 @@ public struct ManualTransactionComposerView: View {
                     
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
-                            ForEach(viewModel.availableAccounts) { account in
+                            ForEach(viewModel.matchingCurrencyAccounts.filter { $0.id != viewModel.selectedAccountID }) { account in
                                 accountChip(account: account, isSelected: viewModel.selectedDestinationAccountID == account.id) {
                                     viewModel.selectedDestinationAccountID = account.id
                                 }
@@ -431,5 +449,5 @@ public struct ManualTransactionComposerView: View {
 #Preview {
     ManualTransactionComposerView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

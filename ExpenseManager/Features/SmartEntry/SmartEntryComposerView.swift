@@ -19,5 +19,5 @@ public struct SmartEntryComposerView: View {
 #Preview {
     SmartEntryComposerView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

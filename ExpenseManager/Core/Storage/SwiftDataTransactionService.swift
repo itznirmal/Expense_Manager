@@ -18,6 +18,9 @@ public enum TransactionServiceError: LocalizedError, Sendable {
     case transferSourceAndDestinationMustBeDistinct
     case cashWithdrawalMissingCashAccount
     case accountCurrencyMismatch(accountID: String, expectedCurrencyCode: String, actualCurrencyCode: String)
+    case ambiguousAccountSuggestion(String)
+    case splitAmountsMustEqualParent
+    case cannotSplitPendingOrTransfer
     
     public var errorDescription: String? {
         switch self {
@@ -35,6 +38,12 @@ public enum TransactionServiceError: LocalizedError, Sendable {
             return "Cash withdrawals require an active Cash account as their destination."
         case .accountCurrencyMismatch(let accountID, let expectedCurrencyCode, let actualCurrencyCode):
             return "Account '\(accountID)' uses \(actualCurrencyCode), but the transaction uses \(expectedCurrencyCode)."
+        case .ambiguousAccountSuggestion(let suggestion):
+            return "Account suggestion '\(suggestion)' matches more than one account."
+        case .splitAmountsMustEqualParent:
+            return "Split line amounts must exactly equal the original transaction amount."
+        case .cannotSplitPendingOrTransfer:
+            return "Pending reviews and transfers cannot be split."
         }
     }
 }
@@ -55,13 +64,11 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     // MARK: - TransactionServiceProtocol
     
     public func fetchRecentTransactions(limit: Int) async throws -> [TransactionCandidate] {
-        var descriptor = FetchDescriptor<TransactionRecord>(
+        let descriptor = FetchDescriptor<TransactionRecord>(
             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
         )
-        descriptor.fetchLimit = limit
-        
         let records = try modelContext.fetch(descriptor)
-        return records.filter { !$0.isPendingReview }.map { $0.toCandidate() }
+        return Array(records.filter(\.isPosted).prefix(max(0, limit))).map { $0.toCandidate() }
     }
     
     public func fetchPendingReviewTransactions() async throws -> [TransactionCandidate] {
@@ -69,7 +76,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
         )
         let records = try modelContext.fetch(descriptor)
-        return records.filter { $0.isPendingReview }.map { $0.toCandidate() }
+        return records.filter { $0.isPendingReview && !$0.isPosted }.map { $0.toCandidate() }
     }
     
     public func fetchTransactions(
@@ -87,7 +94,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             .filter { record in
                 if let start = startDate, record.transactionDate < start { return false }
                 if let end = endDate, record.transactionDate > end { return false }
-                if record.isPendingReview { return false }
+                if !record.isPosted { return false }
                 if let cat = categoryID, record.category?.id != cat && record.category?.name != cat { return false }
                 if let acc = accountID,
                    record.account?.id != acc &&
@@ -120,9 +127,10 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         accountLastFour: String?,
         source: String
     ) async throws -> TransactionImportResult {
+        try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
         if try hasDuplicateFingerprint(
             sourceHash: sourceHash,
-            amount: abs(candidate.amount),
+            amount: candidate.amount,
             merchant: candidate.merchantName,
             accountLastFour: accountLastFour,
             referenceNumber: candidate.sourceReference,
@@ -142,7 +150,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         do {
             let fingerprint = ImportFingerprintRecord(
                 sourceHash: sourceHash,
-                amount: abs(candidate.amount),
+                amount: candidate.amount,
                 normalizedMerchant: candidate.merchantName.trimmingCharacters(in: .whitespacesAndNewlines),
                 accountLastFour: accountLastFour,
                 transactionReference: candidate.sourceReference,
@@ -167,16 +175,21 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             throw TransactionServiceError.transactionNotFound(id: id)
         }
         
-        let normalizedAmount = abs(candidate.amount)
+        // Resolve and validate BEFORE mutating balances so failures leave the ledger intact.
+        try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
+        let normalizedAmount = candidate.amount
         let oldType = record.transactionType
         let oldAmount = record.amount
         let oldAccount = record.account
         let oldDestAccount = record.destinationAccount
-        let hadAcceptedEffect = record.isAccepted && !record.isPendingReview
+        let hadAcceptedEffect = record.isPosted
 
         // Resolve and validate every replacement relationship before touching the old effect.
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
-        let resolvedAccount = try resolveAccountSuggestion(for: candidate.accountSuggestion)
+        let resolvedAccount = try resolveAccountSuggestion(
+            for: candidate.accountSuggestion,
+            accountLastFour: candidate.accountLastFour
+        )
 
         var resolvedDestinationAccount: AccountRecord?
         if candidate.type == .transfer {
@@ -211,7 +224,6 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
         }
         
-        // 3. Update record properties
         record.transactionType = candidate.type
         record.amount = normalizedAmount
         record.currencyCode = candidate.currencyCode
@@ -228,11 +240,11 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         record.confidence = candidate.confidence.value
         record.isPendingReview = isPending
         record.isAccepted = !isPending
+        record.reviewReasons = candidate.warnings
         record.updatedAt = Date()
         
-        // 4. Apply new balance effect (only if accepted)
-        if !isPending {
-            applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
+        if record.isPosted {
+            try applyBalanceEffect(for: candidate.type, amount: normalizedAmount, account: resolvedAccount, destinationAccount: resolvedDestinationAccount)
         }
         
         do {
@@ -249,6 +261,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         }
         guard record.isPendingReview else { return }
 
+        try MoneyValidation.validate(amount: record.amount, currencyCode: record.currencyCode)
         try validateBalanceEffectRelationships(
             for: record.transactionType,
             currencyCode: record.currencyCode,
@@ -256,10 +269,21 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             destinationAccount: record.destinationAccount
         )
         
+        if record.transactionType == .transfer {
+            guard let dest = record.destinationAccount else {
+                throw TransactionServiceError.transferMissingDestination
+            }
+            if record.account?.id == dest.id {
+                throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
+            }
+        } else if record.transactionType == .cashWithdrawal, record.destinationAccount == nil {
+            record.destinationAccount = try resolveCashAccount(currencyCode: record.currencyCode)
+        }
+
         record.isPendingReview = false
         record.isAccepted = true
-        
-        applyBalanceEffect(for: record.transactionType, amount: record.amount, account: record.account, destinationAccount: record.destinationAccount)
+
+        try applyBalanceEffect(for: record.transactionType, amount: record.amount, account: record.account, destinationAccount: record.destinationAccount)
         
         do {
             try modelContext.save()
@@ -267,6 +291,91 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             modelContext.rollback()
             throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
         }
+    }
+
+    public func splitTransaction(id: String, splits: [TransactionSplitLine]) async throws -> [String] {
+        guard let parent = try fetchRecord(by: id) else {
+            throw TransactionServiceError.transactionNotFound(id: id)
+        }
+        guard !parent.isPendingReview else {
+            throw TransactionServiceError.cannotSplitPendingOrTransfer
+        }
+        guard parent.transactionType == .expense || parent.transactionType == .income || parent.transactionType == .refund else {
+            throw TransactionServiceError.cannotSplitPendingOrTransfer
+        }
+
+        guard parent.isPosted else {
+            throw TransactionServiceError.cannotSplitPendingOrTransfer
+        }
+        try MoneyValidation.validate(amount: parent.amount, currencyCode: parent.currencyCode)
+        guard splits.count >= 2 else {
+            throw TransactionServiceError.splitAmountsMustEqualParent
+        }
+        for split in splits {
+            try MoneyValidation.validate(amount: split.amount, currencyCode: parent.currencyCode)
+        }
+        let splitTotal = splits.reduce(Decimal.zero) { $0 + $1.amount }
+        guard splitTotal == parent.amount else {
+            throw TransactionServiceError.splitAmountsMustEqualParent
+        }
+        let resolvedCategories = try splits.map {
+            try resolveCategory(for: $0.categoryName) ?? parent.category
+        }
+        
+        let oldType = parent.transactionType
+        let oldAmount = parent.amount
+        let oldAccount = parent.account
+        let oldDest = parent.destinationAccount
+
+        rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDest)
+
+        let groupID = UUID().uuidString
+        var createdIDs: [String] = []
+
+        for (line, category) in zip(splits, resolvedCategories) {
+            let child = TransactionRecord(
+                id: UUID().uuidString,
+                type: parent.transactionType,
+                amount: line.amount,
+                currencyCode: parent.currencyCode,
+                merchantName: line.merchantName.isEmpty ? parent.merchantName : line.merchantName,
+                category: category,
+                account: parent.account,
+                destinationAccount: parent.destinationAccount,
+                paymentMethod: parent.resolvedPaymentMethod,
+                transactionDate: parent.transactionDate,
+                notes: line.notes ?? parent.notes,
+                tags: parent.tags,
+                source: parent.inputSource,
+                sourceReference: parent.sourceReference,
+                confidence: parent.confidence,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+            child.parentTransactionID = parent.id
+            child.splitGroupID = groupID
+            child.isPendingReview = false
+            child.isAccepted = true
+            try applyBalanceEffect(
+                for: child.transactionType,
+                amount: child.amount,
+                account: child.account,
+                destinationAccount: child.destinationAccount
+            )
+            modelContext.insert(child)
+            createdIDs.append(child.id)
+        }
+
+        modelContext.delete(parent)
+
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw TransactionServiceError.contextSaveFailed(error.localizedDescription)
+        }
+
+        return createdIDs
     }
 
     public func deleteTransaction(id: String) async throws {
@@ -279,7 +388,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         let oldAccount = record.account
         let oldDestAccount = record.destinationAccount
         // Roll back balance effect prior to deletion ONLY if it was accepted
-        if record.isAccepted && !record.isPendingReview {
+        if record.isPosted {
             rollbackBalanceEffect(for: oldType, amount: oldAmount, account: oldAccount, destinationAccount: oldDestAccount)
         }
         
@@ -300,10 +409,12 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         var totalIncome: Decimal = .zero
         var totalExpense: Decimal = .zero
         
-        for record in records where record.transactionDate >= startDate && record.transactionDate <= endDate && !record.isPendingReview && record.currencyCode == currencyCode {
+        for record in records where record.transactionDate >= startDate && record.transactionDate <= endDate && record.isPosted && record.currencyCode == currencyCode {
             switch record.transactionType {
-            case .income, .refund:
+            case .income:
                 totalIncome += record.amount
+            case .refund:
+                totalExpense -= record.amount
             case .expense:
                 totalExpense += record.amount
             case .transfer, .cashWithdrawal, .unknown:
@@ -313,6 +424,36 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         }
         
         return (totalIncome, totalExpense)
+    }
+
+    public func calculateSpendingTotals(
+        startDate: Date,
+        endDate: Date,
+        currencyCode: String
+    ) async throws -> TransactionTotals {
+        let records = try modelContext.fetch(FetchDescriptor<TransactionRecord>())
+        var income: Decimal = .zero
+        var grossExpense: Decimal = .zero
+        var refunds: Decimal = .zero
+
+        for record in records where
+            record.transactionDate >= startDate &&
+            record.transactionDate <= endDate &&
+            record.isPosted &&
+            record.currencyCode == currencyCode {
+            switch record.transactionType {
+            case .income:
+                income += record.amount
+            case .expense:
+                grossExpense += record.amount
+            case .refund:
+                refunds += record.amount
+            case .transfer, .cashWithdrawal, .unknown:
+                break
+            }
+        }
+
+        return TransactionTotals(income: income, grossExpense: grossExpense, refunds: refunds)
     }
     
     // MARK: - Private Balance Invariant Helpers
@@ -351,7 +492,11 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             }
             try validateCurrency(of: destination, expected: currencyCode)
 
-        case .expense, .income, .refund, .unknown:
+        case .expense, .income, .refund:
+            if let account {
+                try validateCurrency(of: account, expected: currencyCode)
+            }
+        case .unknown:
             break
         }
     }
@@ -371,7 +516,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         amount: Decimal,
         account: AccountRecord?,
         destinationAccount: AccountRecord?
-    ) {
+    ) throws {
         guard let account = account else { return }
         
         switch type {
@@ -380,8 +525,14 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         case .income, .refund:
             account.currentBalance += amount
         case .transfer, .cashWithdrawal:
+            guard let destinationAccount else {
+                throw TransactionServiceError.transferMissingDestination
+            }
+            guard destinationAccount.id != account.id else {
+                throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
+            }
             account.currentBalance -= amount
-            destinationAccount?.currentBalance += amount
+            destinationAccount.currentBalance += amount
         case .unknown:
             break
         }
@@ -411,9 +562,13 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     /// Builds and inserts a transaction without saving the context.
     /// Callers use this to compose a larger atomic persistence operation.
     private func insertTransaction(_ candidate: TransactionCandidate) throws -> TransactionRecord {
-        let normalizedAmount = abs(candidate.amount)
+        try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
+        let normalizedAmount = candidate.amount
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
-        let resolvedAccount = try resolveAccountSuggestion(for: candidate.accountSuggestion)
+        let resolvedAccount = try resolveAccountSuggestion(
+            for: candidate.accountSuggestion,
+            accountLastFour: candidate.accountLastFour
+        )
         var resolvedDestinationAccount: AccountRecord?
 
         if candidate.type == .transfer {
@@ -465,8 +620,8 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         record.isPendingReview = isPending
         record.isAccepted = !isPending
 
-        if !isPending {
-            applyBalanceEffect(
+        if record.isPosted {
+            try applyBalanceEffect(
                 for: candidate.type,
                 amount: normalizedAmount,
                 account: resolvedAccount,
@@ -543,50 +698,108 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         return try modelContext.fetch(descriptor).first
     }
     
-    private func resolveAccount(for identifierOrName: String?) throws -> AccountRecord? {
-        guard let identifierOrName = identifierOrName?.trimmingCharacters(in: .whitespacesAndNewlines), !identifierOrName.isEmpty else { return nil }
-        
+    private func resolveAccount(
+        for identifierOrName: String?,
+        accountLastFour: String? = nil
+    ) throws -> AccountRecord? {
         let descriptor = FetchDescriptor<AccountRecord>()
         let accounts = try modelContext.fetch(descriptor)
-        
-        // 1. Direct ID match
+        let explicitLastFour = accountLastFour.flatMap(Self.normalizedLastFour)
+
+        guard let identifierOrName = identifierOrName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !identifierOrName.isEmpty else {
+            guard let explicitLastFour else { return nil }
+            let maskMatches = accounts.filter {
+                Self.normalizedLastFour($0.lastFour) == explicitLastFour
+            }
+            if maskMatches.count == 1 {
+                return maskMatches[0]
+            }
+            if maskMatches.count > 1 {
+                throw TransactionServiceError.ambiguousAccountSuggestion(explicitLastFour)
+            }
+            return nil
+        }
+
+        // Stable IDs are always preferred over display names or hints.
         if let directIDMatch = accounts.first(where: { $0.id == identifierOrName }) {
+            if let explicitLastFour,
+               Self.normalizedLastFour(directIDMatch.lastFour) != explicitLastFour {
+                throw TransactionServiceError.ambiguousAccountSuggestion(identifierOrName)
+            }
             return directIDMatch
         }
-        
-        // 2. Exact name match
-        if let exactNameMatch = accounts.first(where: { $0.name.localizedCaseInsensitiveCompare(identifierOrName) == .orderedSame }) {
-            return exactNameMatch
+
+        let exactNameMatches = accounts.filter {
+            $0.name.localizedCaseInsensitiveCompare(identifierOrName) == .orderedSame
         }
-        
-        // 3. Last 4 digits match (e.g. "HDFC Bank •••• 8432" or "8432")
-        let digits = identifierOrName.filter { $0.isNumber }
-        if digits.count >= 4 {
-            let lastFour = String(digits.suffix(4))
-            if let lastFourMatch = accounts.first(where: { $0.lastFour == lastFour }) {
-                return lastFourMatch
+        if exactNameMatches.count == 1 {
+            if let explicitLastFour,
+               Self.normalizedLastFour(exactNameMatches[0].lastFour) != explicitLastFour {
+                throw TransactionServiceError.ambiguousAccountSuggestion(identifierOrName)
+            }
+            return exactNameMatches[0]
+        }
+        if exactNameMatches.count > 1 {
+            throw TransactionServiceError.ambiguousAccountSuggestion(identifierOrName)
+        }
+
+        let hintedDigits = identifierOrName.filter(\.isNumber)
+        let hintedLastFour = hintedDigits.count >= 4 ? String(hintedDigits.suffix(4)) : nil
+        let requestedLastFour = explicitLastFour ?? hintedLastFour
+
+        if let requestedLastFour {
+            let lastFourMatches = accounts.filter {
+                Self.normalizedLastFour($0.lastFour) == requestedLastFour
+            }
+            if lastFourMatches.count == 1 {
+                return lastFourMatches[0]
+            }
+            if lastFourMatches.count > 1 {
+                throw TransactionServiceError.ambiguousAccountSuggestion(identifierOrName)
+            }
+            // An explicit mask that matches no account must not fall through to
+            // fuzzy matching and select an arbitrary same-bank account.
+            if explicitLastFour != nil {
+                return nil
             }
         }
-        
-        // 4. Substring / fuzzy match
-        if let fuzzyMatch = accounts.first(where: {
+
+        let fuzzyMatches = accounts.filter {
             $0.name.localizedCaseInsensitiveContains(identifierOrName) ||
             identifierOrName.localizedCaseInsensitiveContains($0.name)
-        }) {
-            return fuzzyMatch
         }
-        
+        if fuzzyMatches.count == 1 {
+            return fuzzyMatches[0]
+        }
+        if fuzzyMatches.count > 1 {
+            throw TransactionServiceError.ambiguousAccountSuggestion(identifierOrName)
+        }
+
         return nil
     }
 
-    private func resolveAccountSuggestion(for suggestion: String?) throws -> AccountRecord? {
-        let resolvedAccount = try resolveAccount(for: suggestion)
+    private func resolveAccountSuggestion(
+        for suggestion: String?,
+        accountLastFour: String? = nil
+    ) throws -> AccountRecord? {
+        let resolvedAccount = try resolveAccount(for: suggestion, accountLastFour: accountLastFour)
         guard resolvedAccount == nil else { return resolvedAccount }
         guard let suggestion,
               !suggestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            if accountLastFour != nil {
+                throw TransactionServiceError.transactionMissingSourceAccount
+            }
             return nil
         }
         throw TransactionServiceError.transactionMissingSourceAccount
+    }
+
+    private static func normalizedLastFour(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let digits = value.filter(\.isNumber)
+        guard digits.count >= 4 else { return nil }
+        return String(digits.suffix(4))
     }
     
     private func resolveCategory(for identifierOrName: String?) throws -> CategoryRecord? {

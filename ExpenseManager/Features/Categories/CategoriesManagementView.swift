@@ -9,8 +9,8 @@
 import SwiftUI
 
 public struct CategoriesManagementView: View {
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var viewModel = CategoriesViewModel()
     
@@ -36,6 +36,15 @@ public struct CategoriesManagementView: View {
                     Section("Custom Categories") {
                         ForEach(viewModel.customCategories) { cat in
                             categoryRow(cat)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        Task {
+                                            await viewModel.deleteCategory(id: cat.id, container: container, appState: appState)
+                                        }
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                         }
                     }
                 }
@@ -128,5 +137,5 @@ public struct CategoriesManagementView: View {
 #Preview {
     CategoriesManagementView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

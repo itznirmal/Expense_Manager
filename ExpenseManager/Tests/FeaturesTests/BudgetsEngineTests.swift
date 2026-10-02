@@ -200,4 +200,119 @@ final class BudgetsEngineTests: XCTestCase {
         XCTAssertEqual(vm.remainingTotalBudget, Decimal.zero)
         XCTAssertEqual(vm.dailyAllowance, Decimal.zero, "Daily allowance must be zero when over budget")
     }
+
+    // MARK: - 6. Currency Isolation & Refund Netting
+
+    @MainActor
+    func testBudgetsSeparateCurrenciesAndNetRefunds() async throws {
+        let now = Date()
+        let inrAccount = try await dependencyContainer.accountService.createAccount(
+            name: "INR Wallet",
+            type: .cash,
+            openingBalance: Decimal(1000),
+            currencyCode: "INR",
+            icon: "banknote.fill",
+            colorToken: "green",
+            lastFour: nil
+        )
+        let usdAccount = try await dependencyContainer.accountService.createAccount(
+            name: "USD Wallet",
+            type: .cash,
+            openingBalance: Decimal(1000),
+            currencyCode: "USD",
+            icon: "dollarsign.circle.fill",
+            colorToken: "blue",
+            lastFour: nil
+        )
+
+        try await dependencyContainer.budgetService.setBudget(
+            categoryID: nil,
+            limitAmount: Decimal(500),
+            month: now,
+            alertThresholdPercent: 80,
+            currencyCode: "INR"
+        )
+        try await dependencyContainer.budgetService.setBudget(
+            categoryID: nil,
+            limitAmount: Decimal(500),
+            month: now,
+            alertThresholdPercent: 80,
+            currencyCode: "USD"
+        )
+
+        try await dependencyContainer.transactionService.createTransaction(TransactionCandidate(
+            type: .expense,
+            amount: Decimal(100),
+            currencyCode: "INR",
+            merchantName: "Cafe",
+            categorySuggestion: "Food",
+            accountSuggestion: inrAccount,
+            transactionDate: now
+        ))
+        try await dependencyContainer.transactionService.createTransaction(TransactionCandidate(
+            type: .refund,
+            amount: Decimal(25),
+            currencyCode: "INR",
+            merchantName: "Cafe refund",
+            categorySuggestion: "Food",
+            accountSuggestion: inrAccount,
+            transactionDate: now
+        ))
+        try await dependencyContainer.transactionService.createTransaction(TransactionCandidate(
+            type: .expense,
+            amount: Decimal(200),
+            currencyCode: "USD",
+            merchantName: "Store",
+            categorySuggestion: "Shopping",
+            accountSuggestion: usdAccount,
+            transactionDate: now
+        ))
+
+        let pendingID = try await dependencyContainer.transactionService.createTransaction(TransactionCandidate(
+            type: .expense,
+            amount: Decimal(900),
+            currencyCode: "INR",
+            merchantName: "Needs review",
+            categorySuggestion: "Food",
+            accountSuggestion: inrAccount,
+            transactionDate: now,
+            needsReview: true
+        ))
+        let rejectedRecord = TransactionRecord(
+            type: .expense,
+            amount: Decimal(700),
+            currencyCode: "INR",
+            merchantName: "Rejected",
+            transactionDate: now
+        )
+        rejectedRecord.isAccepted = false
+        modelContainer.mainContext.insert(rejectedRecord)
+        try modelContainer.mainContext.save()
+
+        let inr = try await dependencyContainer.budgetService.fetchBudgets(for: now, currencyCode: "INR")
+        let usd = try await dependencyContainer.budgetService.fetchBudgets(for: now, currencyCode: "USD")
+        XCTAssertEqual(inr.count, 1)
+        XCTAssertEqual(inr.first?.currencyCode, "INR")
+        XCTAssertEqual(inr.first?.grossExpenseAmount, Decimal(100))
+        XCTAssertEqual(inr.first?.refundAmount, Decimal(25))
+        XCTAssertEqual(inr.first?.spentAmount, Decimal(75))
+        XCTAssertEqual(usd.count, 1)
+        XCTAssertEqual(usd.first?.spentAmount, Decimal(200))
+
+        try await dependencyContainer.transactionService.acceptTransaction(id: pendingID)
+        let postedAfterReview = try await dependencyContainer.budgetService.fetchBudgets(for: now, currencyCode: "INR")
+        XCTAssertEqual(postedAfterReview.first?.spentAmount, Decimal(975))
+    }
+
+    @MainActor
+    func testBudgetsAreOptionalUntilConfigured() async throws {
+        let budgets = try await dependencyContainer.budgetService.fetchBudgets(for: Date(), currencyCode: nil)
+        XCTAssertTrue(budgets.isEmpty)
+
+        let vm = BudgetsViewModel()
+        vm.budgets = budgets
+        XCTAssertNil(vm.overallBudget)
+        XCTAssertEqual(vm.totalLimit, .zero)
+        XCTAssertEqual(vm.totalSpent, .zero)
+    }
 }

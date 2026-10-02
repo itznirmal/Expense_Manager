@@ -23,7 +23,7 @@ public struct PrivacyGuaranteeView: View {
                             .font(.system(size: 48))
                             .foregroundStyle(ColorTokens.incomeAccent)
                         
-                        Text("100% On-Device Architecture")
+                        Text("Your records stay on your device")
                             .font(Typography.title2)
                             .foregroundStyle(ColorTokens.textPrimary)
                         
@@ -60,7 +60,7 @@ public struct PrivacyGuaranteeView: View {
                         pillarRow(
                             icon: "externaldrive.badge.checkmark",
                             title: "Local SwiftData & Checksummed Backups",
-                            detail: "Your data is stored in a private local SQLite SwiftData store. Backups are exported as versioned JSON packages signed with SHA-256 integrity hashes."
+                            detail: "Records are stored locally with SwiftData. JSON backups include a checksum to detect damage; they are not encrypted or digitally signed. Share backups only with destinations you trust."
                         )
                         
                         pillarRow(

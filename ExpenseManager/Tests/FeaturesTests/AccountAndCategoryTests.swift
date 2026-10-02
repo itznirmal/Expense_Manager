@@ -139,4 +139,158 @@ final class AccountAndCategoryTests: XCTestCase {
         let incomeCats = vm.filteredCategories
         XCTAssertTrue(incomeCats.allSatisfy { $0.type == .income || $0.type == .both })
     }
+
+    @MainActor
+    func testAccountBalancesValidateSignedZeroAndFractionalValuesWithoutMutation() async throws {
+        let liabilityID = try await dependencyContainer.accountService.createAccount(
+            name: "Liability",
+            type: .creditCard,
+            openingBalance: -250.50,
+            currencyCode: "INR",
+            icon: "creditcard.fill",
+            colorToken: "purple",
+            lastFour: nil
+        )
+        let zeroID = try await dependencyContainer.accountService.createAccount(
+            name: "Zero",
+            type: .bank,
+            openingBalance: .zero,
+            currencyCode: "INR",
+            icon: "building.columns.fill",
+            colorToken: "blue",
+            lastFour: nil
+        )
+
+        let liability = try await dependencyContainer.accountService.getAccount(id: liabilityID)
+        let zero = try await dependencyContainer.accountService.getAccount(id: zeroID)
+        XCTAssertEqual(liability?.balance, -250.50)
+        XCTAssertEqual(zero?.balance, .zero)
+
+        do {
+            _ = try await dependencyContainer.accountService.createAccount(
+                name: "Invalid Fraction",
+                type: .bank,
+                openingBalance: Decimal(string: "1.001")!,
+                currencyCode: "INR",
+                icon: "building.columns.fill",
+                colorToken: "blue",
+                lastFour: nil
+            )
+            XCTFail("Fractional balance beyond currency scale must be rejected")
+        } catch {
+            // Expected.
+        }
+        do {
+            _ = try await dependencyContainer.accountService.createAccount(
+                name: "Invalid NaN",
+                type: .bank,
+                openingBalance: NSDecimalNumber.notANumber.decimalValue,
+                currencyCode: "INR",
+                icon: "building.columns.fill",
+                colorToken: "blue",
+                lastFour: nil
+            )
+            XCTFail("Non-finite account balance must be rejected")
+        } catch {
+            // Expected.
+        }
+        do {
+            _ = try await dependencyContainer.accountService.createAccount(
+                name: "Invalid Currency",
+                type: .bank,
+                openingBalance: 1,
+                currencyCode: "XYZ",
+                icon: "building.columns.fill",
+                colorToken: "blue",
+                lastFour: nil
+            )
+            XCTFail("Unsupported account currency must be rejected")
+        } catch {
+            // Expected.
+        }
+
+        let accounts = try await dependencyContainer.accountService.fetchAccounts(includeArchived: true)
+        XCTAssertEqual(accounts.count, 2)
+    }
+
+    @MainActor
+    func testAccountCurrencyChangeWithExistingTransactionIsRejectedWithoutMutation() async throws {
+        let accountID = try await dependencyContainer.accountService.createAccount(
+            name: "Checking",
+            type: .bank,
+            openingBalance: 1_000,
+            currencyCode: "INR",
+            icon: "building.columns.fill",
+            colorToken: "blue",
+            lastFour: nil
+        )
+        let candidate = TransactionCandidate(
+            type: .expense,
+            amount: 100,
+            currencyCode: "INR",
+            merchantName: "Existing Purchase",
+            accountSuggestion: accountID,
+            source: .manual
+        )
+        _ = try await dependencyContainer.transactionService.createTransaction(candidate)
+
+        guard var updated = try await dependencyContainer.accountService.getAccount(id: accountID) else {
+            XCTFail("Account was not found after creation")
+            return
+        }
+        updated.currencyCode = "USD"
+        updated.balance = 900
+
+        do {
+            try await dependencyContainer.accountService.updateAccount(updated)
+            XCTFail("Currency changes with existing transactions must be rejected")
+        } catch let error as AccountServiceError {
+            guard case .currencyChangeNotAllowed(_) = error else {
+                XCTFail("Expected currencyChangeNotAllowed, got \(error)")
+                return
+            }
+        } catch {
+            XCTFail("Expected currencyChangeNotAllowed, got \(error)")
+        }
+
+        guard let accountAfter = try await dependencyContainer.accountService.getAccount(id: accountID) else {
+            XCTFail("Account disappeared after rejected update")
+            return
+        }
+        XCTAssertEqual(accountAfter.currencyCode, "INR")
+        XCTAssertEqual(accountAfter.balance, 900)
+        let transactions = try await dependencyContainer.transactionService.fetchTransactions(
+            startDate: nil,
+            endDate: nil,
+            categoryID: nil,
+            accountID: accountID
+        )
+        XCTAssertEqual(transactions.count, 1)
+        XCTAssertEqual(transactions.first?.currencyCode, "INR")
+
+        var invalidBalance = accountAfter
+        invalidBalance.balance = Decimal(string: "1.001")!
+        do {
+            try await dependencyContainer.accountService.updateAccount(invalidBalance)
+            XCTFail("Fractional account balance beyond currency scale must be rejected")
+        } catch {
+            // Expected.
+        }
+
+        var invalidCurrency = accountAfter
+        invalidCurrency.currencyCode = "XYZ"
+        do {
+            try await dependencyContainer.accountService.updateAccount(invalidCurrency)
+            XCTFail("Unsupported account currency must be rejected")
+        } catch {
+            // Expected.
+        }
+
+        guard let accountAfterInvalidUpdates = try await dependencyContainer.accountService.getAccount(id: accountID) else {
+            XCTFail("Account disappeared after rejected invalid updates")
+            return
+        }
+        XCTAssertEqual(accountAfterInvalidUpdates.currencyCode, "INR")
+        XCTAssertEqual(accountAfterInvalidUpdates.balance, 900)
+    }
 }

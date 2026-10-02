@@ -10,81 +10,99 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 public struct SettingsView: View {
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
-    
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
+
     @State private var viewModel: SettingsViewModel?
-    
+    @State private var widgetAmounts = WidgetSnapshotStore.showsAmounts
+
     public init() {}
-    
+
     private var activeViewModel: SettingsViewModel {
         if let existing = viewModel { return existing }
         let vm = SettingsViewModel(exportService: container.dataExportService)
         return vm
     }
-    
+
     public var body: some View {
         NavigationStack {
             let vm = activeViewModel
             @Bindable var bindableVM = vm
-            
+
             Form {
                 // MARK: - 1. General Preferences
                 Section("Preferences") {
-                    HStack {
-                        Label("Default Currency", systemImage: "indianrupeesign.circle")
-                        Spacer()
-                        Text("INR (₹)")
-                            .foregroundStyle(ColorTokens.textSecondary)
+                    Picker("Currency for new entries", selection: Binding(
+                        get: { appState.preferredCurrencyCode },
+                        set: { appState.preferredCurrencyCode = $0 }
+                    )) {
+                        ForEach(CurrencyFormatter.supportedCurrencyCodes, id: \.self) { code in
+                            Text(code).tag(code)
+                        }
                     }
-                    
+                    Text("Old entries and budget currencies stay unchanged. Reports can show each currency separately.")
+                        .font(.caption).foregroundStyle(.secondary)
+
                     Toggle(isOn: Binding(
                         get: { appState.requireBiometrics },
                         set: { vm.toggleBiometrics(enable: $0, appState: appState) }
                     )) {
                         Label("Face ID / Passcode", systemImage: "faceid")
                     }
-                    
+
                     NavigationLink {
                         AccountsListView()
                     } label: {
                         Label("Manage Accounts", systemImage: "building.columns.fill")
                     }
-                    
+
                     NavigationLink {
                         CategoriesManagementView()
                     } label: {
-                        Label("Category Taxonomy", systemImage: "tag.fill")
+                        Label("Manage Categories", systemImage: "tag.fill")
                     }
+                    Toggle("Show amounts in widgets", isOn: $widgetAmounts)
+                        .disabled(appState.requireBiometrics)
+                        .onChange(of: widgetAmounts) { _, enabled in
+                            WidgetSnapshotStore.setShowsAmounts(enabled && !appState.requireBiometrics)
+                            appState.dataRevision += 1
+                        }
+                    Text("Off by default. Visible widget amounts can be seen without opening the app. App Lock keeps them hidden.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                
+
                 // MARK: - 2. Automation & Ingestion
-                Section("Automation & Ingestion") {
-                    Toggle(isOn: $bindableVM.autoParseSMS) {
-                        Label("Shortcuts SMS Ingestion", systemImage: "message.badge.filled.fill")
-                    }
-                    
+                Section("Advanced capture") {
+                    Text("Bank-message imports use a Shortcut you configure. Unlock is required; setup and device support vary.")
+                        .font(.caption).foregroundStyle(.secondary)
+
                     Button {
                         appState.presentSheet(.smsDiagnostics)
                     } label: {
-                        Label("SMS Diagnostics Sandbox", systemImage: "stethoscope")
+                        Label("Test a Bank Message", systemImage: "stethoscope")
                     }
-                    
+
                     Button {
                         appState.presentSheet(.voiceEntry)
                     } label: {
                         Label("Voice Entry Assistant", systemImage: "mic.fill")
                     }
-                    
+
                     Button {
                         vm.showSMSGuideSheet = true
                     } label: {
                         Label("How to Setup SMS Automation", systemImage: "questionmark.circle")
                     }
                 }
-                
+
                 // MARK: - 3. Data Export & Backup
                 Section("Data Export & Backup") {
+                    Button {
+                        appState.presentSheet(.statementImport)
+                    } label: {
+                        Label("Import Bank Statement (CSV)", systemImage: "doc.text.fill")
+                    }
+
                     // CSV Export
                     VStack(alignment: .leading, spacing: 6) {
                         Button {
@@ -101,7 +119,7 @@ public struct SettingsView: View {
                                 }
                             }
                         }
-                        
+
                         if let csvURL = vm.csvExportURL {
                             ShareLink(item: csvURL) {
                                 Label("Share / Save CSV Ledger", systemImage: "square.and.arrow.up.fill")
@@ -111,7 +129,7 @@ public struct SettingsView: View {
                             .padding(.top, 2)
                         }
                     }
-                    
+
                     // JSON Backup Export
                     VStack(alignment: .leading, spacing: 6) {
                         Button {
@@ -128,7 +146,7 @@ public struct SettingsView: View {
                                 }
                             }
                         }
-                        
+
                         if let backupURL = vm.backupExportURL {
                             ShareLink(item: backupURL) {
                                 Label("Share / Save Backup Package", systemImage: "externaldrive.fill")
@@ -138,7 +156,7 @@ public struct SettingsView: View {
                             .padding(.top, 2)
                         }
                     }
-                    
+
                     // JSON Backup Restore
                     Button {
                         vm.showRestoreFilePicker = true
@@ -146,7 +164,7 @@ public struct SettingsView: View {
                         Label("Restore from JSON Backup", systemImage: "arrow.counterclockwise.circle")
                     }
                 }
-                
+
                 // MARK: - 4. Privacy & Security Invariants
                 Section("Privacy & Security") {
                     Button {
@@ -166,7 +184,7 @@ public struct SettingsView: View {
                         }
                     }
                     .foregroundStyle(ColorTokens.textPrimary)
-                    
+
                     HStack {
                         Label("CSV Sanitization", systemImage: "shield.checkered")
                         Spacer()
@@ -175,14 +193,14 @@ public struct SettingsView: View {
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
                 }
-                
+
                 // MARK: - 5. Danger Zone
                 Section("Danger Zone") {
                     Button(role: .destructive) {
                         vm.showPurgeConfirmationAlert = true
                     } label: {
                         HStack {
-                            Label("Factory Reset / Purge Data", systemImage: "trash.fill")
+                            Label("Clear active ledger", systemImage: "trash.fill")
                             Spacer()
                             if vm.isPurgingData {
                                     ProgressView()
@@ -191,7 +209,7 @@ public struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 // MARK: - 6. About
                 Section("About") {
                     HStack {
@@ -200,7 +218,7 @@ public struct SettingsView: View {
                         Text("1.0.0 (Phase 21 Release)")
                             .foregroundStyle(ColorTokens.textSecondary)
                     }
-                    
+
                     HStack {
                         Text("Persistence")
                         Spacer()
@@ -211,7 +229,7 @@ public struct SettingsView: View {
                         }
                         .foregroundStyle(ColorTokens.textSecondary)
                     }
-                    
+
                     HStack {
                         Text("Architecture")
                         Spacer()
@@ -221,6 +239,11 @@ public struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { appState.dismissSheet() }
+                }
+            }
             .onAppear {
                 if viewModel == nil {
                     viewModel = SettingsViewModel(exportService: container.dataExportService)
@@ -263,17 +286,17 @@ public struct SettingsView: View {
             }
             // Purge Confirmation Alert
             .alert(
-                "Purge All Data?",
+                "Clear active ledger?",
                 isPresented: $bindableVM.showPurgeConfirmationAlert
             ) {
                 Button("Cancel", role: .cancel) {}
-                Button("Purge Everything", role: .destructive) {
+                Button("Clear ledger", role: .destructive) {
                     Task {
                         await vm.executePurge(appState: appState)
                     }
                 }
             } message: {
-                Text("This will permanently delete all transactions, custom accounts, budgets, and merchant rules. Default system categories will be restored. This action cannot be undone.")
+                Text("This deletes the active ledger's transactions, accounts, budgets and merchant rules. Default categories will be restored. Exported backups and original store files preserved during startup recovery are retained separately. This action cannot be undone.")
             }
         }
     }
@@ -282,5 +305,5 @@ public struct SettingsView: View {
 #Preview {
     SettingsView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

@@ -489,6 +489,126 @@ final class TransactionLedgerInvariantTests: XCTestCase {
     }
 
     @MainActor
+    func testIsPostedRequiresAcceptanceAndNotPendingReview() {
+        let record = TransactionRecord(amount: 10, currencyCode: "INR")
+        XCTAssertTrue(record.isPosted)
+
+        record.isPendingReview = true
+        XCTAssertFalse(record.isPosted)
+
+        record.isPendingReview = false
+        record.isAccepted = false
+        XCTAssertFalse(record.isPosted)
+    }
+
+    @MainActor
+    func testOrdinaryPostingKindsRejectCurrencyMismatchBeforeMutation() async throws {
+        for type in [TransactionType.expense, .income, .refund] {
+            let accountID = try await makeAccount(
+                name: "INR \(type.rawValue)",
+                balance: 10_000,
+                currencyCode: "INR"
+            )
+            let candidate = TransactionCandidate(
+                type: type,
+                amount: 100,
+                currencyCode: "USD",
+                merchantName: "Currency Mismatch",
+                accountSuggestion: accountID,
+                source: .manual
+            )
+
+            try await assertThrows {
+                try await self.transactionService.createTransaction(candidate)
+            }
+            let balance = try await accountService.getAccount(id: accountID)?.balance
+            XCTAssertEqual(balance, 10_000)
+        }
+
+        let transactions = try await transactionService.fetchTransactions(
+            startDate: nil,
+            endDate: nil,
+            categoryID: nil,
+            accountID: nil
+        )
+        XCTAssertTrue(transactions.isEmpty)
+    }
+
+    @MainActor
+    func testInvalidFractionalAndNaNAmountsAreRejectedWithoutMutation() async throws {
+        let accountID = try await makeAccount(name: "Money Validation", balance: 10_000, currencyCode: "INR")
+        let fractional = TransactionCandidate(
+            type: .expense,
+            amount: Decimal(string: "1.001")!,
+            currencyCode: "INR",
+            merchantName: "Fractional Cent",
+            accountSuggestion: accountID,
+            source: .manual
+        )
+        try await assertThrows {
+            try await self.transactionService.createTransaction(fractional)
+        }
+
+        let notANumber = NSDecimalNumber.notANumber.decimalValue
+        let nanCandidate = TransactionCandidate(
+            type: .expense,
+            amount: notANumber,
+            currencyCode: "INR",
+            merchantName: "Not A Number",
+            accountSuggestion: accountID,
+            source: .manual
+        )
+        try await assertThrows {
+            try await self.transactionService.createTransaction(nanCandidate)
+        }
+
+        let balance = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balance, 10_000)
+    }
+
+    @MainActor
+    func testRefundTotalsKeepGrossAndNetSpendingSeparate() async throws {
+        let accountID = try await makeAccount(name: "Totals", balance: 0, currencyCode: "INR")
+        let expense = TransactionCandidate(
+            type: .expense,
+            amount: 200,
+            currencyCode: "INR",
+            merchantName: "Purchase",
+            accountSuggestion: accountID,
+            source: .manual
+        )
+        let refund = TransactionCandidate(
+            type: .refund,
+            amount: 50,
+            currencyCode: "INR",
+            merchantName: "Returned Purchase",
+            accountSuggestion: accountID,
+            source: .manual
+        )
+        let income = TransactionCandidate(
+            type: .income,
+            amount: 1_000,
+            currencyCode: "INR",
+            merchantName: "Pay",
+            accountSuggestion: accountID,
+            source: .manual
+        )
+        try await transactionService.createTransaction(expense)
+        try await transactionService.createTransaction(refund)
+        try await transactionService.createTransaction(income)
+
+        let totals = try await transactionService.calculateSpendingTotals(
+            startDate: .distantPast,
+            endDate: .distantFuture,
+            currencyCode: "INR"
+        )
+        XCTAssertEqual(totals.income, 1_000)
+        XCTAssertEqual(totals.grossExpense, 200)
+        XCTAssertEqual(totals.refunds, 50)
+        XCTAssertEqual(totals.netSpending, 150)
+    }
+
+    @MainActor
     private func fetchTransactionRecord(id: String) throws -> TransactionRecord? {
         let records = try modelContext.fetch(FetchDescriptor<TransactionRecord>())
         return records.first { $0.id == id }

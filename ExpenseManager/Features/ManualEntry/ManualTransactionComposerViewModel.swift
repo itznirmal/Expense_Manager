@@ -64,7 +64,24 @@ public final class ManualTransactionComposerViewModel {
     }
     
     public var canSave: Bool {
-        amount > .zero && (!merchantName.trimmingCharacters(in: .whitespaces).isEmpty || selectedCategoryID != nil || isTransfer || isCashWithdrawal)
+        amount > .zero && !isSaving
+    }
+
+    public var matchingCurrencyAccounts: [AccountDTO] {
+        availableAccounts.filter { $0.currencyCode == currencyCode }
+    }
+
+    public var availableCurrencyCodes: [String] {
+        Array(Set(CurrencyFormatter.supportedCurrencyCodes + availableAccounts.map(\.currencyCode) + [currencyCode])).sorted()
+    }
+
+    public func selectCurrency() {
+        if !matchingCurrencyAccounts.contains(where: { $0.id == selectedAccountID }) {
+            selectedAccountID = matchingCurrencyAccounts.first?.id
+        }
+        if !matchingCurrencyAccounts.contains(where: { $0.id == selectedDestinationAccountID && $0.id != selectedAccountID }) {
+            selectedDestinationAccountID = matchingCurrencyAccounts.first(where: { $0.id != selectedAccountID })?.id
+        }
     }
     
     // MARK: - Initializer
@@ -73,7 +90,7 @@ public final class ManualTransactionComposerViewModel {
         if let candidate = candidate {
             self.editingCandidateId = candidate.id
             self.type = candidate.type
-            self.amountText = candidate.amount > 0 ? "\(candidate.amount)" : ""
+            self.amountText = candidate.amount > 0 ? CurrencyFormatter.shared.format(amount: candidate.amount, currencyCode: candidate.currencyCode, includeSymbol: false) : ""
             self.currencyCode = candidate.currencyCode
             self.merchantName = candidate.merchantName
             self.selectedCategoryID = candidate.categorySuggestion
@@ -102,15 +119,28 @@ public final class ManualTransactionComposerViewModel {
             
             self.availableCategories = categories
             self.availableAccounts = accounts
+
+            // Restore stable selections when older candidates contain display names.
+            if let selection = selectedAccountID, !accounts.contains(where: { $0.id == selection }) {
+                let matches = accounts.filter { $0.name == selection && $0.currencyCode == currencyCode }
+                if matches.count == 1 { selectedAccountID = matches[0].id }
+            }
+            if let selection = selectedDestinationAccountID, !accounts.contains(where: { $0.id == selection }) {
+                let matches = accounts.filter { $0.name == selection && $0.currencyCode == currencyCode }
+                if matches.count == 1 { selectedDestinationAccountID = matches[0].id }
+            }
+            if let selection = selectedCategoryID, !categories.contains(where: { $0.id == selection }) {
+                selectedCategoryID = categories.first(where: { $0.name == selection })?.id ?? selection
+            }
             
             // Set default account if none selected
-            if self.selectedAccountID == nil, let firstAccount = accounts.first {
+            if self.selectedAccountID == nil, let firstAccount = accounts.first(where: { $0.currencyCode == currencyCode }) {
                 self.selectedAccountID = firstAccount.id
             }
             
             // Set default destination account for transfers
             if self.selectedDestinationAccountID == nil && accounts.count > 1 {
-                self.selectedDestinationAccountID = accounts.first(where: { $0.id != self.selectedAccountID })?.id ?? accounts.last?.id
+                self.selectedDestinationAccountID = accounts.first(where: { $0.id != self.selectedAccountID && $0.currencyCode == currencyCode })?.id
             }
             
             // Set default category if none selected
@@ -135,7 +165,7 @@ public final class ManualTransactionComposerViewModel {
     public func applyPresetAmount(_ delta: Decimal) {
         let current = self.amount
         let newAmount = current + delta
-        self.amountText = "\(newAmount)"
+        self.amountText = CurrencyFormatter.shared.format(amount: newAmount, currencyCode: currencyCode, includeSymbol: false)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
@@ -183,15 +213,15 @@ public final class ManualTransactionComposerViewModel {
         
         // Resolve category & account names
         let categoryName = availableCategories.first(where: { $0.id == selectedCategoryID })?.name ?? selectedCategoryID
-        let accountName = availableAccounts.first(where: { $0.id == selectedAccountID })?.name ?? selectedAccountID
+        let accountName = selectedAccountID
         
         // Auto-route ATM Cash Withdrawals to Cash Account
         var destinationAccountName: String? = nil
         if isTransfer {
-            destinationAccountName = availableAccounts.first(where: { $0.id == selectedDestinationAccountID })?.name ?? selectedDestinationAccountID
+            destinationAccountName = selectedDestinationAccountID
         } else if isCashWithdrawal {
-            let cashAccount = availableAccounts.first(where: { $0.type == .cash })
-            destinationAccountName = cashAccount?.name ?? "Cash"
+            let cashAccount = matchingCurrencyAccounts.first(where: { $0.type == .cash })
+            destinationAccountName = cashAccount?.id ?? "Cash"
         }
         
         let candidateID = editingCandidateId ?? UUID()
@@ -251,7 +281,7 @@ public final class ManualTransactionComposerViewModel {
             
             appState.showToast(
                 title: editingCandidateId != nil ? "Transaction Updated" : "Transaction Logged",
-                message: "\(CurrencyFormatter.shared.format(amount: candidate.amount)) • \(candidate.merchantName)",
+                message: "\(CurrencyFormatter.shared.format(amount: candidate.amount, currencyCode: candidate.currencyCode)) • \(candidate.merchantName)",
                 type: .success
             )
             

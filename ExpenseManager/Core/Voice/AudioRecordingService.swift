@@ -15,6 +15,7 @@ public enum VoiceRecordingError: LocalizedError, Sendable {
     case microphonePermissionDenied
     case speechRecognitionPermissionDenied
     case recognizerUnavailable
+    case onDeviceRecognitionUnavailable
     case audioEngineError(String)
     case transcriptionError(String)
     case cancelled
@@ -27,6 +28,8 @@ public enum VoiceRecordingError: LocalizedError, Sendable {
             return "Speech recognition permission was denied. Please enable it in Settings."
         case .recognizerUnavailable:
             return "Speech recognizer is not available on this device or for the current locale."
+        case .onDeviceRecognitionUnavailable:
+            return "On-device speech recognition is unavailable for this device or locale. Voice entry is disabled to protect your privacy."
         case .audioEngineError(let msg):
             return "Audio engine failure: \(msg)"
         case .transcriptionError(let msg):
@@ -111,8 +114,15 @@ public final class AudioRecordingService: NSObject, AudioRecordingServiceProtoco
         guard let recognizer = speechRecognizer, recognizer.isAvailable else {
             throw VoiceRecordingError.recognizerUnavailable
         }
+
+        // Never install an audio tap unless the recognizer can honor the local-only
+        // requirement. There is deliberately no network-recognition fallback.
+        guard recognizer.supportsOnDeviceRecognition else {
+            throw VoiceRecordingError.onDeviceRecognitionUnavailable
+        }
         
         let authorized = await requestAuthorization()
+        try Task.checkCancellation()
         guard authorized else {
             throw VoiceRecordingError.speechRecognitionPermissionDenied
         }

@@ -10,8 +10,8 @@ import SwiftUI
 
 public struct AccountComposerView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     private let editingAccount: AccountDTO?
     
@@ -40,7 +40,7 @@ public struct AccountComposerView: View {
         self.editingAccount = account
         _name = State(initialValue: account?.name ?? "")
         _type = State(initialValue: account?.type ?? .bank)
-        _balanceText = State(initialValue: account != nil ? "\(account!.balance)" : "")
+        _balanceText = State(initialValue: account.map { CurrencyFormatter.shared.format(amount: $0.balance, currencyCode: $0.currencyCode, includeSymbol: false) } ?? "")
         _currencyCode = State(initialValue: account?.currencyCode ?? CurrencyFormatter.defaultCurrencyCode)
         _lastFour = State(initialValue: account?.lastFour ?? "")
         _selectedIcon = State(initialValue: account?.icon ?? "building.columns.fill")
@@ -176,7 +176,19 @@ public struct AccountComposerView: View {
             return
         }
         
-        let parsedBalance = CurrencyFormatter.shared.parse(from: balanceText) ?? .zero
+        let cleanedBalance = balanceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsedBalance = cleanedBalance.isEmpty ? Decimal.zero : CurrencyFormatter.shared.parse(from: cleanedBalance) else {
+            errorMessage = "Enter a valid balance."
+            return
+        }
+        do {
+            if parsedBalance != .zero {
+                try MoneyValidation.validate(amount: abs(parsedBalance), currencyCode: currencyCode)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
         let trimmedLastFour = lastFour.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedLastFour = trimmedLastFour.isEmpty ? nil : String(trimmedLastFour.suffix(4))
         
@@ -223,5 +235,5 @@ public struct AccountComposerView: View {
 #Preview {
     AccountComposerView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

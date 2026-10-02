@@ -15,8 +15,35 @@ public final class CurrencyFormatter: Sendable {
     public static let shared = CurrencyFormatter()
     
     // Default fallback currency code and locale
-    public static let defaultCurrencyCode = "INR"
-    public static let defaultLocaleIdentifier = "en_IN"
+    public static let supportedCurrencyCodes = ["INR", "USD", "EUR", "GBP", "CAD", "AUD", "SGD", "AED", "JPY", "CHF", "NZD", "KWD"]
+
+    public static var preferences: UserDefaults {
+        if let index = CommandLine.arguments.firstIndex(of: "-UITestStore"), index + 1 < CommandLine.arguments.count {
+            return UserDefaults(suiteName: "ExpenseManager.UITests." + CommandLine.arguments[index + 1]) ?? .standard
+        }
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return UserDefaults(suiteName: "ExpenseManager.UnitTests." + String(ProcessInfo.processInfo.processIdentifier)) ?? .standard
+        }
+        return .standard
+    }
+
+    public static var defaultCurrencyCode: String {
+        let code = preferences.string(forKey: "preferredCurrencyCode") ?? preferences.string(forKey: "defaultCurrency") ?? "INR"
+        return Locale.commonISOCurrencyCodes.contains(code) ? code : "INR"
+    }
+    public static var defaultLocaleIdentifier: String { Locale.current.identifier }
+
+    public static func setPreferredCurrency(_ code: String) {
+        guard Locale.commonISOCurrencyCodes.contains(code) else { return }
+        preferences.set(code, forKey: "preferredCurrencyCode")
+    }
+
+    public static func fractionDigits(for code: String) -> Int {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = code
+        return formatter.maximumFractionDigits
+    }
     
     public init() {}
     
@@ -36,15 +63,16 @@ public final class CurrencyFormatter: Sendable {
         currencyCode: String = defaultCurrencyCode,
         locale: Locale = Locale(identifier: defaultLocaleIdentifier),
         includeSymbol: Bool = true,
-        fractionDigits: Int = 2,
+        fractionDigits: Int? = nil,
         alwaysShowSign: Bool = false
     ) -> String {
         let formatter = NumberFormatter()
         formatter.locale = locale
         formatter.numberStyle = includeSymbol ? .currency : .decimal
         formatter.currencyCode = currencyCode
-        formatter.minimumFractionDigits = fractionDigits
-        formatter.maximumFractionDigits = fractionDigits
+        let digits = fractionDigits ?? Self.fractionDigits(for: currencyCode)
+        formatter.minimumFractionDigits = digits
+        formatter.maximumFractionDigits = digits
         
         let isNegative = amount < 0
         let absAmount = isNegative ? -amount : amount
@@ -78,37 +106,19 @@ public final class CurrencyFormatter: Sendable {
         let absAmount = isNegative ? -amount : amount
         let prefix = isNegative ? "-\(symbol)" : symbol
         
-        let doubleVal = NSDecimalNumber(decimal: absAmount).doubleValue
-        
-        if locale.identifier.contains("IN") {
-            // Indian Numbering System: 1 Crore = 10,000,000, 1 Lakh = 100,000, 1 Thousand = 1,000
-            if doubleVal >= 10_000_000 {
-                let cr = doubleVal / 10_000_000
-                return String(format: "%@%.2f Cr", prefix, cr).replacingOccurrences(of: ".00", with: "")
-            } else if doubleVal >= 100_000 {
-                let lakh = doubleVal / 100_000
-                return String(format: "%@%.2f L", prefix, lakh).replacingOccurrences(of: ".00", with: "")
-            } else if doubleVal >= 1_000 {
-                let k = doubleVal / 1_000
-                return String(format: "%@%.1f K", prefix, k).replacingOccurrences(of: ".0", with: "")
-            } else {
-                return format(amount: amount, currencyCode: currencyCode, locale: locale, fractionDigits: 0)
-            }
-        } else {
-            // International Numbering System: B, M, K
-            if doubleVal >= 1_000_000_000 {
-                let b = doubleVal / 1_000_000_000
-                return String(format: "%@%.2fB", prefix, b)
-            } else if doubleVal >= 1_000_000 {
-                let m = doubleVal / 1_000_000
-                return String(format: "%@%.2fM", prefix, m)
-            } else if doubleVal >= 1_000 {
-                let k = doubleVal / 1_000
-                return String(format: "%@%.1fK", prefix, k)
-            } else {
-                return format(amount: amount, currencyCode: currencyCode, locale: locale, fractionDigits: 0)
-            }
+        let scales: [(Decimal, String)] = locale.identifier.contains("IN")
+            ? [(10000000, " Cr"), (100000, " L"), (1000, " K")]
+            : [(1000000000, "B"), (1000000, "M"), (1000, "K")]
+        if let (divisor, suffix) = scales.first(where: { absAmount >= $0.0 }) {
+            let number = NumberFormatter()
+            number.locale = locale
+            number.numberStyle = .decimal
+            number.minimumFractionDigits = 2
+            number.maximumFractionDigits = 2
+            let scaled = NSDecimalNumber(decimal: absAmount / divisor)
+            return prefix + (number.string(from: scaled) ?? scaled.stringValue) + suffix
         }
+        return format(amount: amount, currencyCode: currencyCode, locale: locale)
     }
     
     /// Extracts the currency symbol for a given currency code and locale.
@@ -133,10 +143,11 @@ public final class CurrencyFormatter: Sendable {
         var cleaned = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return nil }
         
-        let isNegative = cleaned.contains("-") || (cleaned.hasPrefix("(") && cleaned.hasSuffix(")"))
+        let accountingNegative = cleaned.hasPrefix("(") && cleaned.hasSuffix(")")
+        if accountingNegative { cleaned = String(cleaned.dropFirst().dropLast()) }
         
         // Remove common currency prefixes / words / symbols
-        let stripPatterns = ["₹", "Rs.", "Rs", "INR", "$", "USD", "€", "EUR", "£", "GBP", "(", ")", "+", "-"]
+        let stripPatterns = ["₹", "Rs.", "Rs", "$", "€", "£"] + Self.supportedCurrencyCodes
         for pattern in stripPatterns {
             cleaned = cleaned.replacingOccurrences(of: pattern, with: "", options: .caseInsensitive)
         }
@@ -145,6 +156,23 @@ public final class CurrencyFormatter: Sendable {
         // Handle thousands separator
         let groupingSeparator = locale.groupingSeparator ?? ","
         let decimalSeparator = locale.decimalSeparator ?? "."
+        let parts = cleaned.components(separatedBy: decimalSeparator)
+        guard parts.count <= 2 else { return nil }
+        let integer = parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "+-"))
+        if accountingNegative && (cleaned.hasPrefix("-") || cleaned.hasPrefix("+")) { return nil }
+        if integer.contains(groupingSeparator) {
+            let groups = integer.components(separatedBy: groupingSeparator)
+            let grouping = NumberFormatter()
+            grouping.locale = locale
+            grouping.numberStyle = .decimal
+            let primary = grouping.groupingSize
+            let secondary = grouping.secondaryGroupingSize > 0 ? grouping.secondaryGroupingSize : primary
+            guard primary > 0, let first = groups.first, let last = groups.last,
+                  !first.isEmpty, first.count <= secondary, last.count == primary,
+                  groups.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) }),
+                  groups.dropFirst().dropLast().allSatisfy({ $0.count == secondary }) else { return nil }
+        }
+        if parts.count == 2 && parts[1].contains(groupingSeparator) { return nil }
         
         cleaned = cleaned.replacingOccurrences(of: groupingSeparator, with: "")
         if decimalSeparator != "." {
@@ -152,10 +180,12 @@ public final class CurrencyFormatter: Sendable {
         }
         
         cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleaned.range(of: "^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)$", options: .regularExpression) != nil else { return nil }
         guard let decimal = Decimal(string: cleaned) else {
             return nil
         }
         
-        return isNegative ? -decimal : decimal
+        guard !decimal.isNaN else { return nil }
+        return accountingNegative ? -decimal : decimal
     }
 }

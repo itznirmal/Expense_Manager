@@ -9,7 +9,7 @@
 | ISS-005 | P0 | LogExpenseIntent / ParseTextExpenseIntent | Outdated entity creation and unhandled Double conversion | REVIEW_REPORT.md Cluster 2 | AC-ARCH-2 | FIXED | Migrated to SwiftDataTransactionService, exact Decimal conversion, and error handling |
 | ISS-006 | P0 | SMS Parsing / Orchestrator | Property mismatch on accountLastFour and raw SMS in notes | REVIEW_REPORT.md Cluster 2 | AC-PARSE-1 / GT-69 | FIXED | Reconciled accountLastFour alias and enforced notes: nil for raw bank SMS |
 | ISS-007 | P0 | Voice Entry Subsystem | Stale service call signatures and audio engine leak on dismiss | REVIEW_REPORT.md Cluster 2 | AC-ARCH-2 | FIXED | Reconciled fetchAccounts/fetchCategories/createTransaction/learnRule and added onDisappear cleanup |
-| ISS-008 | P0 | Confidence Scoring / Diagnostics | Inconsistent ConfidenceScore property callsites | REVIEW_REPORT.md Cluster 2 | AC-PARSE-3 | FIXED | Standardized ConfidenceScore.Tier, score, rawScore, formattedPercentage |
+| ISS-008 | P0 | Confidence Scoring / Diagnostics | Inconsistent ConfidenceScore property callsites | REVIEW_REPORT.md Cluster 2 | AC-PARSE-3 | FIXED | Standardized ConfidenceScore.tier, score, rawScore, formattedPercentage |
 | ISS-009 | P0 | Account Taxonomy | Missing .savings and .investment cases in AccountType | REVIEW_REPORT.md Cluster 2 | AC-ARCH-1 | FIXED | Added cases with display names and icons, grouped in bankAccounts |
 | ISS-010 | P0 | Review Queue & Export Tests | Missing .ocr case in InputSource, stale saveTransaction test calls | REVIEW_REPORT.md Cluster 2 | AC-DATA-1 | FIXED | Added .ocr case, durable SwiftData updates, and updated tests to createTransaction |
 | ISS-011 | P1 | Manual Composer & Accounting | Edit mode created new transactions, transfer lacked validation | REVIEW_REPORT.md Cluster 3 | AC-FIN-1 | FIXED | Dispatches updateTransaction on editing ID, validates src != dst, auto-routes ATM cash |
@@ -17,6 +17,15 @@
 | ISS-013 | P1 | Biometrics & Privacy | Biometrics toggle was disconnected from LocalAuthentication | REVIEW_REPORT.md Cluster 4 | AC-SEC-1 / GT-66 | FIXED | Added LAContext biometrics, full-screen BiometricLockView, and scenePhase background lock |
 | ISS-014 | P1 | Backup Restore Atomic Integrity | Restore deleted database before validating payload, lost fingerprints | REVIEW_REPORT.md Cluster 4 | AC-DATA-1 / GT-68 | FIXED | Staged SHA-256 validation prior to deletion, included ImportFingerprintRecord in backups |
 | ISS-015 | P2 | CSV Formula Sanitizer | Space-padded formula trigger bypass risk | REVIEW_REPORT.md Cluster 4 | AC-SEC-1 / GT-58 | FIXED | Trimmed leading whitespace before checking formula triggers (=, +, -, @, \t, \r) |
+| ISS-016 | P0 | SwiftDataTransactionService | Broken `$0` shorthand + `candidate.isPendingReview` compile drift | REMEDIATION_VERIFICATION_REPORT | AC-ARCH-2 | FIXED | Restored `$0` filters; pending flag uses `needsReview` only |
+| ISS-017 | P1 | Transfer / Cash invariants | Soft optional destination credit; SMS used fake Savings Account | REMEDIATION_VERIFICATION_REPORT | AC-FIN-3 | FIXED | Hard destination required on accept; ATM → Cash; pending transfers skip balance until accept |
+| ISS-018 | P1 | AppState environment | `.environment(appState)` vs `\.appState` key mismatch | REMEDIATION_VERIFICATION_REPORT | AC-SEC-2 | FIXED | Inject via `.environment(\.appState, appState)` |
+| ISS-019 | P2 | Categories | No edit/delete for custom categories | REMEDIATION_VERIFICATION_REPORT | AC-HIG-2 | FIXED | Service + swipe-to-delete for custom categories |
+| ISS-020 | P2 | Budgets | Alert threshold ignored by at-risk logic | REMEDIATION_VERIFICATION_REPORT | AC-HIG-2 | FIXED | `atRiskBudgets` honors `alertThresholdPercent` |
+| ISS-021 | P2 | Settings | Currency / SMS toggles in-memory only | REMEDIATION_VERIFICATION_REPORT | AC-HIG-2 | FIXED | Persisted via UserDefaults |
+| ISS-022 | Feature | Competitive gap | Missing split transactions (top forum request) | Competitive review | Product | FIXED | `splitTransaction` API + SplitTransactionView |
+| ISS-023 | Feature | Competitive gap | Missing statement CSV import | Competitive review | Product | FIXED | StatementCSVImportService + Settings import UI |
+| ISS-024 | Feature | Competitive gap | Missing home-screen widgets | Competitive review | Product | FIXED | WidgetKit extension + App Group snapshot store |
 
 | ISS-016 | P0 | Transaction services | Remediation introduced non-compiling service references, shorthand closures, and incomplete mock protocol conformance | evidence/transaction-services/iss-016/static-verification.txt; ExpenseManager/Tests/FoundationTests/TransactionServiceProtocolTests.swift | AC-ARCH-2 / AC-PARSE-3 | FIXED | Replaced invalid closure shorthand and stale candidate state references; completed mock protocol conformance and added focused regression coverage. Swift/Xcode execution remains unverified on Windows. |
 | ISS-017 | P1 | Transaction ledger | Pending review discard and invalid edit paths corrupt account balances; transfer/cash source and currency validation incomplete | evidence/transaction-services/iss-017/static-verification.txt; ExpenseManager/Tests/FinancialEngineTests/TransactionLedgerInvariantTests.swift | AC-FIN-2 / AC-FIN-3 / AC-PARSE-3 | FIXED | Review follow-up validates every transfer/cash leg against the candidate currency, restricts Cash resolution to active AccountType.cash records, validates legacy pending transfer/cash records before acceptance, permits nil/blank ordinary account suggestions, rejects unresolved nonblank suggestions before reversing accepted effects, and covers non-pending unaccepted deletion plus rejected two-leg transfer updates. Swift/Xcode execution remains unverified on Windows. |
@@ -25,4 +34,21 @@
 | ISS-020 | P1 | Currency and platform support | Non-default currencies are hidden rather than presented separately; macOS manifest target has unguarded iOS APIs | 2026-08-27 static review | AC-FIN-1 / AC-ARCH-1 | OPEN | — |
 
 ---
-**Status Update - 2026-08-26 (Phase 7 Completion)**: Zero open defects. All quality bar criteria and release gates have been thoroughly verified and resolved. System is cleared for production release.
+**Status Update - 2026-09-18 (Competitive Improvements)**: Compile-break remediations closed; split transactions, CSV statement import, widgets, category delete, budget threshold honor, and settings persistence landed. Generate Xcode project with `xcodegen generate` on macOS before device build. Remaining open: fully atomic restore swap-store, concurrent fingerprint race hardening, Foundation Model parser layer, OCR.
+
+## 2026-10-02 brief implementation (source status)
+
+Historical issue IDs overlap after merging the local remediation and remote competitive work. The rows above remain historical; use BRIEF IDs for the current pass. Implementation is not native/device proof.
+
+| ID | Priority | Area | Result | Status / evidence |
+|---|---|---|---|---|
+| BRIEF-01 | P1 | Entry and navigation | Today / History / Plan, currency welcome, amount-first manual entry, optional details, working edit route and typed environment injection | IMPLEMENTED / NATIVE PENDING; ManualEntryFlowTests and UITests |
+| BRIEF-02 | P1 | Financial integrity | Positive finite Decimal and ISO scale validation, all posting currency checks, posted-only reports, separate refunds and visible currency summaries | IMPLEMENTED / NATIVE PENDING; ledger, formatting, budget and analytics regressions |
+| BRIEF-03 | P1 | Import identity and atomicity | SMS mask retained, ambiguous accounts reviewed, atomic fingerprints, currency-aware statement import | IMPLEMENTED / NATIVE PENDING; SMS and split/statement tests |
+| BRIEF-04 | P1 | Backup and migration | Graph validation before replacement, rollback, legacy checksum compatibility, split provenance roundtrip, V1 to V2 budget currency fixture | IMPLEMENTED / NATIVE PENDING; export and migration tests; actual old-store upgrade remains OPEN |
+| BRIEF-05 | P1 | App Lock and lifecycle | Shared authentication generation, fail-closed settings, inactive cover and overlay suppression, protected store bootstrap without reset | IMPLEMENTED / DEVICE PENDING; AppLockStateTests; snapshots, biometric and protected-data gates OPEN |
+| BRIEF-06 | P1 | Capture and widgets | Explicit voice start/save, local recognition capability gate, authenticated intents, default-hidden financial widgets | IMPLEMENTED / DEVICE PENDING; actual voice, Shortcuts and cached widget privacy gates OPEN |
+| BRIEF-07 | P1 | Native build evidence | Shared Mac/CI verification script with stored logs/results | CI EXECUTION PENDING; current status in latest CHECKPOINT |
+| BRIEF-08 | P2 | Startup recovery | Retry preserves existing store; copied-container investigation guide | IMPLEMENTED / NATIVE PENDING: confirmed backup recovery into a separate protected store; originals retained; StartupRecoveryTests |
+
+See docs/Brief_Implementation_Status.md and docs/MacBook_Verification_Guide.md. Original QUALITY_BAR.md remains frozen.

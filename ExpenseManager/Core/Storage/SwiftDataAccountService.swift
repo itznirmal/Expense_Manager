@@ -13,6 +13,10 @@ import SwiftData
 public enum AccountServiceError: LocalizedError, Sendable {
     case accountNotFound(id: String)
     case contextSaveFailed(String)
+    case invalidBalance
+    case unsupportedCurrencyCode(String)
+    case balanceHasTooManyFractionalDigits(currencyCode: String, maximum: Int)
+    case currencyChangeNotAllowed(accountID: String)
     
     public var errorDescription: String? {
         switch self {
@@ -20,6 +24,41 @@ public enum AccountServiceError: LocalizedError, Sendable {
             return "Account with identifier '\(id)' was not found."
         case .contextSaveFailed(let message):
             return "Failed to save account data: \(message)"
+        case .invalidBalance:
+            return "Account balance must be a finite Decimal value."
+        case .unsupportedCurrencyCode(let code):
+            return "Currency code '\(code)' is not a supported ISO currency code."
+        case .balanceHasTooManyFractionalDigits(let code, let maximum):
+            return "Account balance for \(code) may have at most \(maximum) fractional digits."
+        case .currencyChangeNotAllowed(let id):
+            return "Account '\(id)' cannot change currency after transactions have been recorded."
+        }
+    }
+}
+
+/// Validates signed account balances without applying transaction-only positivity rules.
+public enum AccountBalanceValidation {
+    public static func validate(balance: Decimal, currencyCode: String) throws {
+        guard !balance.isNaN else {
+            throw AccountServiceError.invalidBalance
+        }
+
+        let scalars = Array(currencyCode.unicodeScalars)
+        guard scalars.count == 3,
+              scalars.allSatisfy({ $0.value >= 65 && $0.value <= 90 }),
+              Locale.commonISOCurrencyCodes.contains(currencyCode) else {
+            throw AccountServiceError.unsupportedCurrencyCode(currencyCode)
+        }
+
+        let scale = CurrencyFormatter.fractionDigits(for: currencyCode)
+        var source = balance
+        var rounded = Decimal.zero
+        NSDecimalRound(&rounded, &source, scale, .plain)
+        guard rounded == balance else {
+            throw AccountServiceError.balanceHasTooManyFractionalDigits(
+                currencyCode: currencyCode,
+                maximum: scale
+            )
         }
     }
 }
@@ -64,6 +103,7 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
         colorToken: String,
         lastFour: String?
     ) async throws -> String {
+        try AccountBalanceValidation.validate(balance: openingBalance, currencyCode: currencyCode)
         let record = AccountRecord(
             id: UUID().uuidString,
             name: name,
@@ -93,6 +133,12 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
         guard let record = try fetchRecord(by: account.id) else {
             throw AccountServiceError.accountNotFound(id: account.id)
         }
+
+        try AccountBalanceValidation.validate(balance: account.balance, currencyCode: account.currencyCode)
+        if record.currencyCode != account.currencyCode,
+           try hasTransactions(for: record.id) {
+            throw AccountServiceError.currencyChangeNotAllowed(accountID: record.id)
+        }
         
         record.name = account.name
         record.accountType = account.type
@@ -100,7 +146,6 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
         
         // Preserve original openingBalance
         // If the balance is updated manually, update currentBalance, do not alter openingBalance.
-        let balanceDelta = account.balance - record.currentBalance
         record.currentBalance = account.balance
         
         record.icon = account.icon
@@ -164,5 +209,12 @@ public final class SwiftDataAccountService: AccountServiceProtocol, Sendable {
             predicate: #Predicate { $0.id == id }
         )
         return try modelContext.fetch(descriptor).first
+    }
+
+    private func hasTransactions(for accountID: String) throws -> Bool {
+        let records = try modelContext.fetch(FetchDescriptor<TransactionRecord>())
+        return records.contains { record in
+            record.account?.id == accountID || record.destinationAccount?.id == accountID
+        }
     }
 }

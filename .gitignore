@@ -5,6 +5,7 @@
 # Xcode
 #
 build/
+ExpenseManager.xcodeproj/
 *.pbxuser
 !default.pbxuser
 *.mode1v3

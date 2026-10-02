@@ -64,7 +64,14 @@ public final class SMSIngestionOrchestrator: Sendable {
                 currencyCode: bankParsed.currencyCode,
                 merchantName: bankParsed.merchant,
                 inferredCategory: bankParsed.inferredCategory,
-                accountSuggestion: bankParsed.bankName ?? "Bank Account",
+                accountSuggestion: {
+                    if let bank = bankParsed.bankName, let mask = bankParsed.accountMask, !mask.isEmpty {
+                        let digits = mask.filter(\.isNumber)
+                        let lastFour = digits.count >= 4 ? String(digits.suffix(4)) : mask
+                        return "\(bank) •••• \(lastFour)"
+                    }
+                    return bankParsed.bankName ?? "Bank Account"
+                }(),
                 paymentMethod: bankParsed.paymentMethod,
                 transactionDate: bankParsed.date,
                 referenceNumber: bankParsed.referenceNumber,
@@ -94,7 +101,13 @@ public final class SMSIngestionOrchestrator: Sendable {
         if let fingerprintSvc = fingerprintService {
             let isExactDuplicate = try await fingerprintSvc.hasFingerprint(hash: sourceHash)
             if isExactDuplicate {
-                let candidate = buildCandidate(from: draft, confidence: .high, needsReview: false, warnings: ["Exact duplicate detected"])
+                let candidate = buildCandidate(
+                    from: draft,
+                    accountLastFour: accountMaskVal,
+                    confidence: .high,
+                    needsReview: false,
+                    warnings: ["Exact duplicate detected"]
+                )
                 return .duplicate(reason: "Exact message hash already ingested.", candidate: candidate)
             }
             
@@ -107,7 +120,13 @@ public final class SMSIngestionOrchestrator: Sendable {
                 windowSeconds: 300
             )
             if isTimeWindowDuplicate {
-                let candidate = buildCandidate(from: draft, confidence: .high, needsReview: false, warnings: ["Duplicate transaction within 5-minute window"])
+                let candidate = buildCandidate(
+                    from: draft,
+                    accountLastFour: accountMaskVal,
+                    confidence: .high,
+                    needsReview: false,
+                    warnings: ["Duplicate transaction within 5-minute window"]
+                )
                 return .duplicate(reason: "Similar transaction within 5-minute window already ingested.", candidate: candidate)
             }
         }
@@ -137,6 +156,7 @@ public final class SMSIngestionOrchestrator: Sendable {
         
         let candidate = buildCandidate(
             from: draft,
+            accountLastFour: accountMaskVal,
             confidence: confidenceEval.score,
             needsReview: !confidenceEval.isAutoSaveEligible,
             warnings: confidenceEval.warnings
@@ -144,12 +164,21 @@ public final class SMSIngestionOrchestrator: Sendable {
         
         // Step 6: Execution (Auto-Save or Review Queue)
         if autoSaveIfEligible && confidenceEval.isAutoSaveEligible, let txnSvc = transactionService {
-            let persistenceResult = try await txnSvc.createTransactionAndFingerprint(
-                candidate,
-                sourceHash: sourceHash,
-                accountLastFour: accountMaskVal,
-                source: "sms"
-            )
+            let persistenceResult: TransactionImportResult
+            do {
+                persistenceResult = try await txnSvc.createTransactionAndFingerprint(
+                    candidate,
+                    sourceHash: sourceHash,
+                    accountLastFour: accountMaskVal,
+                    source: "sms"
+                )
+            } catch let error as TransactionServiceError
+                where Self.requiresAccountReview(error) {
+                return .reviewRequired(
+                    candidate: reviewCandidate(candidate),
+                    warnings: reviewWarnings(for: candidate)
+                )
+            }
             switch persistenceResult {
             case .saved(let transactionID):
                 return .saved(candidate: candidate, transactionID: transactionID)
@@ -163,12 +192,21 @@ public final class SMSIngestionOrchestrator: Sendable {
             // Persist as a durable review item in SwiftData
             var reviewCandidate = candidate
             reviewCandidate.needsReview = true
-            let persistenceResult = try await txnSvc.createTransactionAndFingerprint(
-                reviewCandidate,
-                sourceHash: sourceHash,
-                accountLastFour: accountMaskVal,
-                source: "sms"
-            )
+            let persistenceResult: TransactionImportResult
+            do {
+                persistenceResult = try await txnSvc.createTransactionAndFingerprint(
+                    reviewCandidate,
+                    sourceHash: sourceHash,
+                    accountLastFour: accountMaskVal,
+                    source: "sms"
+                )
+            } catch let error as TransactionServiceError
+                where Self.requiresAccountReview(error) {
+                return .reviewRequired(
+                    candidate: reviewCandidate(candidate),
+                    warnings: reviewWarnings(for: candidate)
+                )
+            }
             switch persistenceResult {
             case .saved:
                 return .reviewRequired(candidate: reviewCandidate, warnings: confidenceEval.warnings)
@@ -188,6 +226,7 @@ public final class SMSIngestionOrchestrator: Sendable {
     
     private func buildCandidate(
         from draft: ParsedTransactionDraft,
+        accountLastFour: String?,
         confidence: ConfidenceScore,
         needsReview: Bool,
         warnings: [String]
@@ -200,7 +239,11 @@ public final class SMSIngestionOrchestrator: Sendable {
             merchantName: draft.merchantName,
             categorySuggestion: draft.inferredCategory,
             accountSuggestion: draft.accountSuggestion,
-            destinationAccountSuggestion: draft.type == .transfer ? "Savings Account" : nil,
+            accountLastFour: accountLastFour,
+            destinationAccountSuggestion: {
+                if draft.type == .cashWithdrawal { return "Cash" }
+                return nil
+            }(),
             paymentMethod: draft.paymentMethod,
             transactionDate: draft.transactionDate,
             notes: nil, // GT-69 Fix: Zero raw bank SMS text stored in notes
@@ -211,5 +254,26 @@ public final class SMSIngestionOrchestrator: Sendable {
             needsReview: needsReview,
             warnings: warnings
         )
+    }
+
+    private static func requiresAccountReview(_ error: TransactionServiceError) -> Bool {
+        switch error {
+        case .ambiguousAccountSuggestion(_), .transactionMissingSourceAccount:
+            return true
+        case .transactionNotFound(_), .contextSaveFailed(_), .transferMissingDestination,
+             .transferSourceAndDestinationMustBeDistinct, .cashWithdrawalMissingCashAccount,
+             .accountCurrencyMismatch(_, _, _), .splitAmountsMustEqualParent, .cannotSplitPendingOrTransfer:
+            return false
+        }
+    }
+
+    private func reviewCandidate(_ candidate: TransactionCandidate) -> TransactionCandidate {
+        var result = candidate
+        result.needsReview = true
+        return result
+    }
+
+    private func reviewWarnings(for candidate: TransactionCandidate) -> [String] {
+        candidate.warnings + ["Account selection requires review before this SMS can be posted."]
     }
 }

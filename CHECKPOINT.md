@@ -298,3 +298,12 @@ Evidence: docs/Expense_Tracker_iOS_Rebuild_Brief.md; evidence/product-assessment
 Open: Existing ISS-020 remains open. The brief records additional selected source findings without altering historical issue statuses or claiming fixes. Current build, test-run, CI, rendered UI, and physical-device behavior remain unverified.
 Blocked: Native execution requires macOS/Xcode or device evidence; no Swift/Xcode tools are present on this Windows host. This does not block the completed analysis/handoff task.
 Next: Use the new brief for a fresh iOS build, beginning with a real native build/test baseline and then the manual-capture/ledger/History slice.
+
+## 2026-10-02 - Apply the brief and prepare MacBook verification
+
+Works in source: Simpler Today/History/Plan experience, first-use currency choice, quick manual capture and correction; Decimal/currency/posting/refund invariants; graph-validated recovery and budget-currency migration; privacy cover and fail-closed authenticated settings; hidden-by-default widgets and explicit optional capture.
+Merged: Preserved remote cceb6e3 split/CSV/widget work plus the local 6fda902 remediation history. Assessment brief was saved in f4b1631 before integration. Historical issue IDs overlap and are contextual; current work uses BRIEF-* IDs.
+Changed: Application source and focused regression tests; README now reports evidence honestly. Added current implementation status, MacBook guide, verification script and native CI artifacts. QUALITY_BAR.md was not changed.
+Evidence: Windows git diff --check and conflict/environment scans passed. No Swift/Xcode is installed here. Previous remote CI 35513421550 failed before compilation because its Xcode was too old for generated project format 77; updated CI selects Xcode 16.4 on macOS 15.
+Open: Native execution pending publication; physical-device authentication, snapshots, file protection, voice, Shortcuts, widgets, minimum-OS and actual-store upgrade still require evidence. Startup recovery now offers Retry or confirmed backup recovery into a separate protected store; originals stay preserved.
+Next: Push authorized source/brief, inspect the new native run, fix real compiler/test failures, and record its result. User will continue rendered/device checks on MacBook using docs/MacBook_Verification_Guide.md.

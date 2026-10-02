@@ -9,8 +9,8 @@
 import SwiftUI
 
 public struct RootView: View {
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = RootViewModel()
     
@@ -20,28 +20,42 @@ public struct RootView: View {
         @Bindable var state = appState
         
         ZStack(alignment: .top) {
-            if appState.requireBiometrics && appState.isBiometricallyLocked {
-                BiometricLockShieldView()
-                    .transition(.opacity)
-                    .zIndex(200)
+            if appState.shouldHideSensitiveContent {
+                if appState.isSceneActive {
+                    BiometricLockShieldView()
+                } else {
+                    ColorTokens.backgroundPrimary.ignoresSafeArea()
+                        .overlay(Image(systemName: "lock.shield").font(.largeTitle))
+                }
+            } else if !appState.hasCompletedOnboarding {
+                SpendingWelcomeView()
             } else {
                 mainTabContent(state: state)
             }
             
             // Toast Banner Overlay
-            if let toast = appState.activeToast {
+            if !appState.shouldHideSensitiveContent, let toast = appState.activeToast {
                 toastBanner(toast)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(300)
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .background || newPhase == .inactive {
-                appState.lockApp()
+            if newPhase == .active {
+                Task { await appState.refreshPendingReview(container: container) }
             }
         }
+        .task { await appState.refreshPendingReview(container: container) }
         // Sheet Presentations
-        .sheet(item: $state.presentedSheet) { sheet in
+        .sheet(item: $state.presentedSheet, onDismiss: {
+            appState.dataRevision += 1
+            if let next = appState.sheetAfterDismiss, !appState.shouldHideSensitiveContent {
+                appState.sheetAfterDismiss = nil
+                appState.presentSheet(next)
+            }
+            Task { await appState.refreshPendingReview(container: container) }
+        }) { sheet in
+            Group {
             switch sheet {
             case .smartTextEntry:
                 SmartTextComposerView()
@@ -71,6 +85,25 @@ public struct RootView: View {
                 TransactionFilterSheetView(viewModel: TransactionsListViewModel())
             case .transactionBatchCategorize:
                 Text("Batch Categorize")
+            case .splitTransaction(let tx):
+                SplitTransactionView(transaction: tx)
+            case .statementImport:
+                StatementImportView()
+            case .settings:
+                SettingsView()
+            case .analytics:
+                AnalyticsOverviewView()
+            }
+            }
+            .overlay {
+                if appState.shouldHideSensitiveContent {
+                    if appState.isSceneActive {
+                        BiometricLockShieldView()
+                    } else {
+                        ColorTokens.backgroundPrimary.ignoresSafeArea()
+                            .overlay(Image(systemName: "lock.shield").font(.largeTitle))
+                    }
+                }
             }
         }
     }
@@ -98,17 +131,6 @@ public struct RootView: View {
                 }
                 .tag(AppTab.budgets)
             
-            AnalyticsOverviewView()
-                .tabItem {
-                    Label(AppTab.analytics.title, systemImage: AppTab.analytics.iconName)
-                }
-                .tag(AppTab.analytics)
-            
-            SettingsView()
-                .tabItem {
-                    Label(AppTab.settings.title, systemImage: AppTab.settings.iconName)
-                }
-                .tag(AppTab.settings)
         }
         .tint(ColorTokens.brandPrimary)
     }
@@ -146,6 +168,8 @@ public struct RootView: View {
                     .background(ColorTokens.backgroundTertiary)
                     .clipShape(Circle())
             }
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityLabel("Dismiss notification")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -173,13 +197,13 @@ public struct RootView: View {
 #Preview("Light Mode") {
     RootView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark Mode") {
     RootView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
         .preferredColorScheme(.dark)
 }

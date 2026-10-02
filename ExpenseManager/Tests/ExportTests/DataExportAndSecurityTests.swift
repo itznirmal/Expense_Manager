@@ -453,6 +453,242 @@ final class DataExportAndSecurityTests: XCTestCase {
             XCTAssertTrue(error is DataExportError)
         }
     }
+
+    @MainActor
+    func testBackupValidationRejectsUnsupportedVersionAndInvalidGraph() async throws {
+        let sourceData = try await MockDataExportService().exportJSONBackup()
+        let sourcePayload = try DataExportService.createJSONDecoder().decode(BackupPayload.self, from: sourceData)
+
+        let unsupportedVersion = try encodePayload(
+            data: sourcePayload.data,
+            schemaVersion: 0,
+            exportedAt: sourcePayload.exportedAt
+        )
+        XCTAssertThrowsError(try exportService.validateBackupPayload(unsupportedVersion)) { error in
+            XCTAssertEqual(error as? DataExportError, .unsupportedSchemaVersion(0))
+        }
+
+        let duplicateAccount = try XCTUnwrap(sourcePayload.data.accounts.first)
+        let duplicateIDData = BackupData(
+            accounts: sourcePayload.data.accounts + [duplicateAccount],
+            categories: sourcePayload.data.categories,
+            tags: sourcePayload.data.tags,
+            transactions: sourcePayload.data.transactions,
+            budgets: sourcePayload.data.budgets,
+            merchantRules: sourcePayload.data.merchantRules,
+            importFingerprints: sourcePayload.data.importFingerprints
+        )
+        XCTAssertThrowsError(try exportService.validateBackupPayload(try encodePayload(data: duplicateIDData))) { error in
+            guard case .backupDecodingFailed(let reason) = error as? DataExportError else {
+                return XCTFail("Expected structural validation failure, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("Duplicate identifier"))
+        }
+
+        let existingAccount = AccountRecord(id: "existing-account", name: "Keep Me")
+        modelContainer.mainContext.insert(existingAccount)
+        try modelContainer.mainContext.save()
+        do {
+            _ = try await exportService.restoreJSONBackup(from: try encodePayload(data: duplicateIDData))
+            XCTFail("Invalid graph must not restore")
+        } catch {
+            XCTAssertTrue(error is DataExportError)
+        }
+        let survivingAccounts = try modelContainer.mainContext.fetch(FetchDescriptor<AccountRecord>())
+        XCTAssertTrue(survivingAccounts.contains(where: { $0.id == "existing-account" }))
+
+        let danglingTransaction = try XCTUnwrap(sourcePayload.data.transactions.first)
+        let invalidTransaction = TransactionBackupDTO(
+            id: danglingTransaction.id,
+            type: danglingTransaction.type,
+            amount: danglingTransaction.amount,
+            currencyCode: danglingTransaction.currencyCode,
+            merchantName: danglingTransaction.merchantName,
+            categoryID: "missing-category",
+            accountID: danglingTransaction.accountID,
+            destinationAccountID: danglingTransaction.destinationAccountID,
+            paymentMethod: danglingTransaction.paymentMethod,
+            transactionDate: danglingTransaction.transactionDate,
+            notes: danglingTransaction.notes,
+            tags: danglingTransaction.tags,
+            source: danglingTransaction.source,
+            sourceReference: danglingTransaction.sourceReference,
+            confidence: danglingTransaction.confidence,
+            createdAt: danglingTransaction.createdAt,
+            updatedAt: danglingTransaction.updatedAt,
+            isPendingReview: danglingTransaction.isPendingReview,
+            isAccepted: danglingTransaction.isAccepted,
+            reviewReasons: danglingTransaction.reviewReasons,
+            parentTransactionID: danglingTransaction.parentTransactionID,
+            splitGroupID: danglingTransaction.splitGroupID
+        )
+        let danglingReferenceData = BackupData(
+            accounts: sourcePayload.data.accounts,
+            categories: sourcePayload.data.categories,
+            tags: sourcePayload.data.tags,
+            transactions: [invalidTransaction],
+            budgets: sourcePayload.data.budgets,
+            merchantRules: sourcePayload.data.merchantRules,
+            importFingerprints: sourcePayload.data.importFingerprints
+        )
+        XCTAssertThrowsError(try exportService.validateBackupPayload(try encodePayload(data: danglingReferenceData))) { error in
+            guard case .backupDecodingFailed(let reason) = error as? DataExportError else {
+                return XCTFail("Expected foreign-key validation failure, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("unknown category"))
+        }
+
+        let inconsistentReviewData = BackupData(
+            accounts: sourcePayload.data.accounts,
+            categories: sourcePayload.data.categories,
+            tags: sourcePayload.data.tags,
+            transactions: [TransactionBackupDTO(
+                id: danglingTransaction.id,
+                type: danglingTransaction.type,
+                amount: danglingTransaction.amount,
+                currencyCode: danglingTransaction.currencyCode,
+                merchantName: danglingTransaction.merchantName,
+                categoryID: danglingTransaction.categoryID,
+                accountID: danglingTransaction.accountID,
+                destinationAccountID: danglingTransaction.destinationAccountID,
+                paymentMethod: danglingTransaction.paymentMethod,
+                transactionDate: danglingTransaction.transactionDate,
+                notes: danglingTransaction.notes,
+                tags: danglingTransaction.tags,
+                source: danglingTransaction.source,
+                sourceReference: danglingTransaction.sourceReference,
+                confidence: danglingTransaction.confidence,
+                createdAt: danglingTransaction.createdAt,
+                updatedAt: danglingTransaction.updatedAt,
+                isPendingReview: true,
+                isAccepted: true,
+                reviewReasons: ["needs review"],
+                parentTransactionID: danglingTransaction.parentTransactionID,
+                splitGroupID: danglingTransaction.splitGroupID
+            )],
+            budgets: sourcePayload.data.budgets,
+            merchantRules: sourcePayload.data.merchantRules,
+            importFingerprints: sourcePayload.data.importFingerprints
+        )
+        XCTAssertThrowsError(try exportService.validateBackupPayload(try encodePayload(data: inconsistentReviewData))) { error in
+            guard case .backupDecodingFailed(let reason) = error as? DataExportError else {
+                return XCTFail("Expected review-state validation failure, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("Review state"))
+        }
+    }
+
+    @MainActor
+    func testBackupValidationAcceptsISOCodeOutsideUIDisplayListAndTrailingZeros() throws {
+        let amount = try XCTUnwrap(Decimal(string: "12.3400", locale: Locale(identifier: "en_US_POSIX")))
+        let timestamp = Date(timeIntervalSince1970: 1_730_000_000)
+        let account = AccountBackupDTO(
+            id: "bhd-account",
+            name: "Bahrain Account",
+            type: AccountType.bank.rawValue,
+            currencyCode: "BHD",
+            openingBalance: amount,
+            currentBalance: amount,
+            icon: "building.columns.fill",
+            colorToken: "blue",
+            lastFour: nil,
+            isArchived: false,
+            createdAt: timestamp
+        )
+        let data = BackupData(accounts: [account])
+
+        XCTAssertFalse(CurrencyFormatter.supportedCurrencyCodes.contains("BHD"))
+        XCTAssertTrue(Locale.commonISOCurrencyCodes.contains("BHD"))
+        XCTAssertNoThrow(try exportService.validateBackupPayload(try encodePayload(data: data)))
+    }
+
+    @MainActor
+    func testSplitTransactionsRoundTripAfterOriginalParentIsDeleted() async throws {
+        let accountID = try await dependencyContainer.accountService.createAccount(
+            name: "Split Account",
+            type: .bank,
+            openingBalance: Decimal(100),
+            currencyCode: "INR",
+            icon: "building.columns.fill",
+            colorToken: "blue",
+            lastFour: nil
+        )
+        try await dependencyContainer.categoryService.seedDefaultCategoriesIfNeeded()
+
+        let parentID = try await dependencyContainer.transactionService.createTransaction(
+            TransactionCandidate(
+                amount: Decimal(100),
+                currencyCode: "INR",
+                merchantName: "Household Purchase",
+                categorySuggestion: "Shopping",
+                accountSuggestion: accountID,
+                source: .manual
+            )
+        )
+        let childIDs = try await dependencyContainer.transactionService.splitTransaction(
+            id: parentID,
+            splits: [
+                TransactionSplitLine(amount: Decimal(40), categoryName: "Food & Dining", merchantName: "Groceries"),
+                TransactionSplitLine(amount: Decimal(60), categoryName: "Shopping", merchantName: "Household Supplies")
+            ]
+        )
+
+        let splitRecords = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        XCTAssertEqual(splitRecords.count, 2)
+        XCTAssertFalse(splitRecords.contains(where: { $0.id == parentID }))
+        XCTAssertTrue(splitRecords.allSatisfy { $0.parentTransactionID == parentID })
+        XCTAssertEqual(Set(splitRecords.compactMap(\.splitGroupID)).count, 1)
+        XCTAssertEqual(Set(splitRecords.map(\.id)), Set(childIDs))
+
+        let backupData = try await exportService.exportJSONBackup()
+        try await exportService.purgeAllData(restoreDefaultCategories: false)
+        let restoreResult = try await exportService.restoreJSONBackup(from: backupData)
+
+        XCTAssertEqual(restoreResult.transactionsRestored, 2)
+        let restoredRecords = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        XCTAssertEqual(restoredRecords.count, 2)
+        XCTAssertFalse(restoredRecords.contains(where: { $0.id == parentID }))
+        XCTAssertTrue(restoredRecords.allSatisfy { $0.parentTransactionID == parentID })
+        XCTAssertEqual(Set(restoredRecords.compactMap(\.splitGroupID)).count, 1)
+        XCTAssertEqual(restoredRecords.map(\.amount).reduce(Decimal.zero, +), Decimal(100))
+    }
+
+    func testBudgetCurrencyPreservesLegacyINRWireAndEncodesExplicitCurrency() throws {
+        let legacy = BudgetBackupDTO(
+            id: "budget-inr",
+            categoryID: nil,
+            limitAmount: Decimal(1000),
+            month: Date(timeIntervalSince1970: 1_730_000_000),
+            alertThresholdPercent: 80,
+            createdAt: Date(timeIntervalSince1970: 1_730_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_730_000_000)
+        )
+        let legacyObject = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: DataExportService.createJSONEncoder().encode(legacy)) as? [String: Any]
+        )
+        XCTAssertNil(legacyObject["currencyCode"])
+
+        let decodedLegacy = try DataExportService.createJSONDecoder().decode(
+            BudgetBackupDTO.self,
+            from: DataExportService.createJSONEncoder().encode(legacy)
+        )
+        XCTAssertEqual(decodedLegacy.currencyCode, "INR")
+
+        let usd = BudgetBackupDTO(
+            id: "budget-usd",
+            categoryID: nil,
+            currencyCode: "USD",
+            limitAmount: Decimal(1000),
+            month: legacy.month,
+            alertThresholdPercent: 80,
+            createdAt: legacy.createdAt,
+            updatedAt: legacy.updatedAt
+        )
+        let usdObject = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: DataExportService.createJSONEncoder().encode(usd)) as? [String: Any]
+        )
+        XCTAssertEqual(usdObject["currencyCode"] as? String, "USD")
+    }
     
     // MARK: - 5. Database Purge / Factory Reset Tests
     
@@ -539,6 +775,22 @@ final class DataExportAndSecurityTests: XCTestCase {
         await viewModel.executePurge(appState: appState)
         XCTAssertTrue(mockService.purged)
         XCTAssertEqual(appState.activeToast?.title, "Database Reset")
+    }
+
+    private func encodePayload(
+        data: BackupData,
+        schemaVersion: Int = 1,
+        exportedAt: Date = Date(timeIntervalSince1970: 1_730_000_000)
+    ) throws -> Data {
+        let encoder = DataExportService.createJSONEncoder()
+        let checksum = DataExportService.computeSHA256(for: try encoder.encode(data))
+        return try encoder.encode(BackupPayload(
+            schemaVersion: schemaVersion,
+            appVersion: "1.0.0",
+            exportedAt: exportedAt,
+            checksum: checksum,
+            data: data
+        ))
     }
 }
 

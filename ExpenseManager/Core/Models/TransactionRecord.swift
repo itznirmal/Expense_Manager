@@ -34,6 +34,10 @@ public final class TransactionRecord {
     @Attribute public var isPendingReview: Bool = false
     public var isAccepted: Bool = true
     public var reviewReasons: [String] = []
+    /// When set, this row is a child line created by splitting another transaction.
+    public var parentTransactionID: String?
+    /// Shared group id for all lines produced by one split operation.
+    public var splitGroupID: String?
     
     public init(
         id: String = UUID().uuidString,
@@ -89,6 +93,12 @@ public final class TransactionRecord {
         get { InputSource(rawValue: source) ?? .manual }
         set { source = newValue.rawValue }
     }
+
+    /// A transaction affects posted balances and reports only when accepted and
+    /// outside the review queue. Keep this definition shared by every reader.
+    public var isPosted: Bool {
+        isAccepted && !isPendingReview
+    }
     
     // MARK: - DTO Conversion
     
@@ -101,6 +111,7 @@ public final class TransactionRecord {
             merchantName: merchantName,
             categorySuggestion: category?.name,
             accountSuggestion: account?.name,
+            accountLastFour: account?.lastFour,
             destinationAccountSuggestion: destinationAccount?.name,
             paymentMethod: resolvedPaymentMethod,
             transactionDate: transactionDate,
@@ -110,7 +121,7 @@ public final class TransactionRecord {
             sourceReference: sourceReference,
             confidence: ConfidenceScore(confidence),
             needsReview: isPendingReview,
-            warnings: []
+            warnings: reviewReasons
         )
     }
 }

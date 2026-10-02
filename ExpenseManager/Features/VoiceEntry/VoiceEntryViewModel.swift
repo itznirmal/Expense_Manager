@@ -39,6 +39,7 @@ public final class VoiceEntryViewModel {
     private let merchantRuleService: MerchantRuleServiceProtocol?
     
     private var parseDebounceTask: Task<Void, Never>?
+    private var recordingTask: Task<Void, Never>?
     
     // MARK: - Initializer
     
@@ -82,6 +83,7 @@ public final class VoiceEntryViewModel {
     }
     
     public func startListening() {
+        recordingTask?.cancel()
         errorMessage = nil
         permissionDenied = false
         candidate = nil
@@ -89,7 +91,7 @@ public final class VoiceEntryViewModel {
         statusMessage = "Listening..."
         isRecording = true
         
-        Task {
+        recordingTask = Task {
             do {
                 try await audioService.startRecording(
                     onTranscript: { [weak self] transcript in
@@ -133,6 +135,9 @@ public final class VoiceEntryViewModel {
     }
     
     public func stopListening() {
+        recordingTask?.cancel()
+        recordingTask = nil
+        parseDebounceTask?.cancel()
         isRecording = false
         statusMessage = liveTranscript.isEmpty ? "Tap microphone to speak" : "Processing speech..."
         resetWaveform()
@@ -210,16 +215,19 @@ public final class VoiceEntryViewModel {
         defer { isSaving = false }
         
         do {
-            let selectedAccount = availableAccounts.first { $0.name.localizedCaseInsensitiveContains(item.accountSuggestion ?? "") }
-                ?? availableAccounts.first
-            let selectedCategory = availableCategories.first { $0.name.localizedCaseInsensitiveContains(item.categorySuggestion ?? "") }
-                ?? availableCategories.first
+            let selectedAccount = availableAccounts.first {
+                $0.currencyCode == item.currencyCode && ($0.id == item.accountSuggestion || $0.name.caseInsensitiveCompare(item.accountSuggestion ?? "") == .orderedSame)
+            }
+            let selectedCategory = availableCategories.first {
+                $0.id == item.categorySuggestion || $0.name.caseInsensitiveCompare(item.categorySuggestion ?? "") == .orderedSame
+            }
             
             var candidateToSave = item
             candidateToSave.merchantName = item.merchantName.isEmpty ? "Voice Expense" : item.merchantName
             candidateToSave.categorySuggestion = selectedCategory?.name
-            candidateToSave.accountSuggestion = selectedAccount?.name
-            candidateToSave.notes = item.notes ?? liveTranscript
+            candidateToSave.accountSuggestion = selectedAccount?.id ?? item.accountSuggestion
+            candidateToSave.notes = nil
+            candidateToSave.needsReview = false
             candidateToSave.paymentMethod = item.paymentMethod ?? .cash
             candidateToSave.source = .voice
             

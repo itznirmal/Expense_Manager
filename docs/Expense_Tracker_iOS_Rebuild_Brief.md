@@ -2,6 +2,8 @@
 
 Assessed: **2 October 2026**. Audience confirmed by the user: **everyday spending with optional budgets**.
 
+**Implementation update:** The user subsequently authorized applying this brief and storing it in GitHub. The existing app is being evolved with both local and newer remote work preserved. See [current implementation status](Brief_Implementation_Status.md) and [MacBook verification guide](MacBook_Verification_Guide.md). Ratings, source counts and line references below describe the original assessment baseline, not the updated code or a release verdict.
+
 This is a portable handoff for a future implementation agent. It preserves lessons from the current app while proposing a simpler product. The user explicitly permits deviation from the existing implementation. Product recommendations below are proposals; the audience choice is confirmed. This assessment does not authorize publication, paid services, destructive migration, or sending this brief to another chat.
 
 ## 1. Assessment basis and rating

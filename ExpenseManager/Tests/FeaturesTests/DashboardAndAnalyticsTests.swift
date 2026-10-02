@@ -332,4 +332,74 @@ final class DashboardAndAnalyticsTests: XCTestCase {
         XCTAssertNotNil(eurBalance)
         XCTAssertEqual(eurBalance?.netBalance, Decimal(300))
     }
+
+    // MARK: - 6. Currency-Partitioned Analytics & Refund Netting
+
+    @MainActor
+    func testAnalyticsSeparatesCurrenciesAndNetsRefunds() async throws {
+        let inrID = try await dependencyContainer.accountService.createAccount(
+            name: "INR Wallet",
+            type: .cash,
+            openingBalance: Decimal(5000),
+            currencyCode: "INR",
+            icon: "banknote.fill",
+            colorToken: "green",
+            lastFour: nil
+        )
+        let usdID = try await dependencyContainer.accountService.createAccount(
+            name: "USD Wallet",
+            type: .cash,
+            openingBalance: Decimal(5000),
+            currencyCode: "USD",
+            icon: "dollarsign.circle.fill",
+            colorToken: "blue",
+            lastFour: nil
+        )
+        let now = Date()
+
+        try await dependencyContainer.transactionService.createTransaction(TransactionCandidate(
+            type: .expense,
+            amount: Decimal(100),
+            currencyCode: "INR",
+            merchantName: "Cafe",
+            categorySuggestion: "Food",
+            accountSuggestion: inrID,
+            transactionDate: now
+        ))
+        try await dependencyContainer.transactionService.createTransaction(TransactionCandidate(
+            type: .refund,
+            amount: Decimal(30),
+            currencyCode: "INR",
+            merchantName: "Cafe refund",
+            categorySuggestion: "Food",
+            accountSuggestion: inrID,
+            transactionDate: now
+        ))
+        try await dependencyContainer.transactionService.createTransaction(TransactionCandidate(
+            type: .expense,
+            amount: Decimal(500),
+            currencyCode: "USD",
+            merchantName: "Store",
+            categorySuggestion: "Shopping",
+            accountSuggestion: usdID,
+            transactionDate: now
+        ))
+
+        let analyticsVM = AnalyticsViewModel()
+        analyticsVM.selectedCurrencyCode = "INR"
+        await analyticsVM.loadAnalytics(container: dependencyContainer)
+
+        XCTAssertEqual(analyticsVM.availableCurrencyCodes, ["INR", "USD"])
+        XCTAssertEqual(analyticsVM.grossExpense, Decimal(100))
+        XCTAssertEqual(analyticsVM.refundAmount, Decimal(30))
+        XCTAssertEqual(analyticsVM.totalExpense, Decimal(70))
+        XCTAssertEqual(analyticsVM.totalExpenseLabel, "Net spending")
+        XCTAssertEqual(analyticsVM.categoryBreakdowns.first?.totalAmount, Decimal(70))
+        XCTAssertEqual(analyticsVM.categoryBreakdowns.first?.refundAmount, Decimal(30))
+
+        analyticsVM.selectedCurrencyCode = "USD"
+        await analyticsVM.loadAnalytics(container: dependencyContainer)
+        XCTAssertEqual(analyticsVM.totalExpense, Decimal(500))
+        XCTAssertEqual(analyticsVM.refundAmount, .zero)
+    }
 }

@@ -27,11 +27,11 @@ public struct SMSAutomationGuideView: View {
                             .clipShape(Circle())
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Automatic Bank SMS Ingestion")
+                            Text("Bank messages with Shortcuts")
                                 .font(Typography.headline)
                                 .foregroundStyle(ColorTokens.textPrimary)
                             
-                            Text("Log transactions instantly in the background when your bank sends an SMS.")
+                            Text("iOS does not let this app read your inbox. You can pass selected message text through an Apple Shortcut.")
                                 .font(Typography.subheadline)
                                 .foregroundStyle(ColorTokens.textSecondary)
                         }
@@ -60,21 +60,21 @@ public struct SMSAutomationGuideView: View {
                             number: 3,
                             icon: "text.bubble.fill",
                             title: "Configure Keywords Trigger",
-                            description: "Set *Message Contains* to common bank terms:\n`debited`, `credited`, `spent`, `INR`, `Rs`, `UPI`, `VPA`, `A/c`."
+                            description: "Choose a bank sender or a transaction keyword such as **debited**. Avoid forwarding every message."
                         )
                         
                         guideStep(
                             number: 4,
                             icon: "bolt.fill",
                             title: "Add Expense Manager Action",
-                            description: "Add action: Search for **Expense Manager** and choose **Parse Bank SMS** (or **Log Text Expense**). Connect `Shortcut Input` (the SMS text) to the message parameter."
+                            description: "Search for **Expense Manager** and choose **Parse Text or SMS Expense**. Connect the trigger's message text to its text parameter."
                         )
                         
                         guideStep(
                             number: 5,
                             icon: "checkmark.seal.fill",
-                            title: "Enable Background Execution",
-                            description: "Select **Run Immediately** and disable *Notify When Run* so transactions are saved seamlessly in the background."
+                            title: "Test while unlocked",
+                            description: "Run with a sample transaction while your iPhone is unlocked. Authentication is required. With App Lock enabled, enter or review the transaction inside the app instead. Automation availability varies with your iOS version."
                         )
                     }
                     
@@ -83,12 +83,12 @@ public struct SMSAutomationGuideView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "lock.shield.fill")
                                 .foregroundStyle(ColorTokens.incomeAccent)
-                            Text("Strict Security Guarantees")
+                            Text("Review imported details")
                                 .font(Typography.subheadline.weight(.semibold))
                                 .foregroundStyle(ColorTokens.textPrimary)
                         }
                         
-                        Text("• **Zero Internet Transmission**: SMS parsing is 100% on-device.\n• **AC-PARSE-2 Invariant**: OTPs, passwords, declined alerts, spam, and marketing messages are automatically recognized and strictly rejected.\n• **Deduplication**: Duplicate SMS messages within 5 minutes are silently ignored.")
+                        Text("Parsing runs on your device. Safety filters reject recognized OTP and failed-transaction alerts, and duplicate checks reduce repeat imports. Unsupported formats can still be missed or misread. Review the amount, currency, merchant, and account before accepting uncertain results.")
                             .font(Typography.caption)
                             .foregroundStyle(ColorTokens.textSecondary)
                     }

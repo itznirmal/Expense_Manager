@@ -9,8 +9,8 @@
 import SwiftUI
 
 public struct TransactionsListView: View {
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var viewModel = TransactionsListViewModel()
     @State private var isShowingBulkDeleteAlert: Bool = false
@@ -29,7 +29,15 @@ public struct TransactionsListView: View {
                         .background(ColorTokens.backgroundPrimary)
                     
                     // Transactions List / Empty State
-                    if viewModel.isLoading && viewModel.allTransactions.isEmpty {
+                    if let error = viewModel.errorMessage {
+                        ContentUnavailableView {
+                            Label("Couldn't load history", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(error)
+                        } actions: {
+                            Button("Try again") { Task { await viewModel.loadData(container: container) } }
+                        }
+                    } else if viewModel.isLoading && viewModel.allTransactions.isEmpty {
                         ProgressView("Loading transactions...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if viewModel.filteredTransactions.isEmpty {
@@ -39,7 +47,7 @@ public struct TransactionsListView: View {
                             message: "Try modifying search query or clearing active filters.",
                             actionTitle: "Add Transaction"
                         ) {
-                            appState.presentSheet(.smartTextEntry)
+                            appState.presentSheet(.manualEntry(candidate: nil))
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
@@ -67,7 +75,7 @@ public struct TransactionsListView: View {
                 }
             }
             .background(ColorTokens.backgroundPrimary)
-            .navigationTitle("Transactions")
+            .navigationTitle("History")
             .searchable(text: $viewModel.searchQuery, prompt: "Search merchant, notes, or VPA")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -108,7 +116,7 @@ public struct TransactionsListView: View {
                         }
                         
                         Button(action: {
-                            appState.presentSheet(.smartTextEntry)
+                            appState.presentSheet(.manualEntry())
                         }) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 22))
@@ -151,7 +159,7 @@ public struct TransactionsListView: View {
             } message: {
                 Text("This action will delete all selected transactions and reverse their balances.")
             }
-            .task {
+            .task(id: appState.dataRevision) {
                 await viewModel.loadData(container: container)
             }
             .refreshable {
@@ -445,5 +453,5 @@ public struct TransactionsListView: View {
 #Preview {
     TransactionsListView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

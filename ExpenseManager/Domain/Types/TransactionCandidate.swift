@@ -18,6 +18,8 @@ public struct TransactionCandidate: Identifiable, Codable, Sendable, Equatable {
     public var merchantName: String
     public var categorySuggestion: String?
     public var accountSuggestion: String?
+    /// Sanitized account/card identity extracted from an import, when available.
+    public var accountLastFour: String?
     public var destinationAccountSuggestion: String?
     public var paymentMethod: PaymentMethod?
     public var transactionDate: Date
@@ -28,7 +30,7 @@ public struct TransactionCandidate: Identifiable, Codable, Sendable, Equatable {
     public var confidence: ConfidenceScore
     public var needsReview: Bool
     public var warnings: [String]
-    
+
     public init(
         id: UUID = UUID(),
         type: TransactionType = .expense,
@@ -37,6 +39,7 @@ public struct TransactionCandidate: Identifiable, Codable, Sendable, Equatable {
         merchantName: String = "",
         categorySuggestion: String? = nil,
         accountSuggestion: String? = nil,
+        accountLastFour: String? = nil,
         destinationAccountSuggestion: String? = nil,
         paymentMethod: PaymentMethod? = nil,
         transactionDate: Date = Date(),
@@ -55,6 +58,7 @@ public struct TransactionCandidate: Identifiable, Codable, Sendable, Equatable {
         self.merchantName = merchantName
         self.categorySuggestion = categorySuggestion
         self.accountSuggestion = accountSuggestion
+        self.accountLastFour = accountLastFour
         self.destinationAccountSuggestion = destinationAccountSuggestion
         self.paymentMethod = paymentMethod
         self.transactionDate = transactionDate

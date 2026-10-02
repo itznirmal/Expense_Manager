@@ -8,10 +8,12 @@
 
 import SwiftUI
 import SwiftData
+import Observation
 
 /// Central Dependency Injection container for Expense Manager.
 /// Provides access to domain services with support for live SwiftData backends and in-memory test/preview backends.
 @MainActor
+@Observable
 public final class DependencyContainer {
     
     // MARK: - Registered Services
@@ -25,6 +27,7 @@ public final class DependencyContainer {
     public let merchantRuleService: MerchantRuleServiceProtocol?
     public let fingerprintService: ImportFingerprintServiceProtocol?
     public let dataExportService: DataExportServiceProtocol
+    public let statementImportService: StatementCSVImportServiceProtocol
     
     // MARK: - Initializer
     
@@ -37,7 +40,8 @@ public final class DependencyContainer {
         merchantIntelligenceService: MerchantIntelligenceServiceProtocol = MerchantIntelligenceService.shared,
         merchantRuleService: MerchantRuleServiceProtocol? = nil,
         fingerprintService: ImportFingerprintServiceProtocol? = nil,
-        dataExportService: DataExportServiceProtocol? = nil
+        dataExportService: DataExportServiceProtocol? = nil,
+        statementImportService: StatementCSVImportServiceProtocol? = nil
     ) {
         self.transactionService = transactionService
         self.accountService = accountService
@@ -48,6 +52,10 @@ public final class DependencyContainer {
         self.merchantRuleService = merchantRuleService
         self.fingerprintService = fingerprintService
         self.dataExportService = dataExportService ?? MockDataExportService()
+        self.statementImportService = statementImportService ?? StatementCSVImportService(
+            transactionService: transactionService,
+            fingerprintService: fingerprintService
+        )
     }
     
     // MARK: - Factory Constructors
@@ -99,18 +107,5 @@ public final class DependencyContainer {
             merchantIntelligenceService: MerchantIntelligenceService.shared,
             dataExportService: MockDataExportService()
         )
-    }
-}
-
-// MARK: - SwiftUI Environment Key
-
-private struct DependencyContainerKey: EnvironmentKey {
-    static let defaultValue: DependencyContainer = .mock()
-}
-
-public extension EnvironmentValues {
-    var dependencyContainer: DependencyContainer {
-        get { self[DependencyContainerKey.self] }
-        set { self[DependencyContainerKey.self] = newValue }
     }
 }

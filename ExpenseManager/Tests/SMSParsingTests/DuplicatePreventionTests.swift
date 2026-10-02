@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import SwiftData
 @testable import ExpenseManager
 
 final class DuplicatePreventionTests: XCTestCase {
@@ -159,6 +160,8 @@ final class DuplicatePreventionTests: XCTestCase {
         let firstResult = try await orchestrator.ingest(smsText: sms, autoSaveIfEligible: true)
         if case .saved(let candidate, _) = firstResult {
             XCTAssertEqual(candidate.amount, Decimal(520.00))
+            XCTAssertEqual(candidate.accountLastFour, "4321")
+            XCTAssertNil(candidate.notes)
         } else {
             XCTFail("First ingestion expected to save, got: \(firstResult)")
         }
@@ -171,5 +174,73 @@ final class DuplicatePreventionTests: XCTestCase {
         } else {
             XCTFail("Second ingestion expected duplicate rejection, got: \(secondResult)")
         }
+    }
+
+    @MainActor
+    func testSMSAccountMaskResolvesDifferentlyNamedAccountAndDoesNotRetainRawText() async throws {
+        let container = try DatabaseContainer.inMemory()
+        let accountService = SwiftDataAccountService(modelContainer: container)
+        let accountID = try await accountService.createAccount(
+            name: "Primary spending wallet",
+            type: .bank,
+            openingBalance: 10_000,
+            currencyCode: "INR",
+            icon: "building.columns.fill",
+            colorToken: "blue",
+            lastFour: "4321"
+        )
+        let transactionService = SwiftDataTransactionService(modelContainer: container)
+        let fingerprintService = ImportFingerprintService(modelContainer: container)
+        let parser = SMSIngestionOrchestrator(
+            transactionService: transactionService,
+            fingerprintService: fingerprintService
+        )
+        let sms = "HDFC Bank: Rs 520.00 debited from a/c **4321 on 25-AUG-26 to VPA swiggy@upi (UPI Ref no MASK-1). Avl bal: Rs 9,480.00"
+
+        let result = try await parser.ingest(smsText: sms, autoSaveIfEligible: true)
+        guard case .saved(let candidate, _) = result else {
+            XCTFail("Expected the masked account to resolve, got \(result)")
+            return
+        }
+        XCTAssertEqual(candidate.accountLastFour, "4321")
+        XCTAssertNil(candidate.notes)
+
+        let records = try container.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.account?.id, accountID)
+        XCTAssertNil(records.first?.notes)
+    }
+
+    @MainActor
+    func testAmbiguousSameBankMaskRoutesSMSToReviewWithoutArbitraryPosting() async throws {
+        let container = try DatabaseContainer.inMemory()
+        let accountService = SwiftDataAccountService(modelContainer: container)
+        for name in ["HDFC daily", "HDFC travel"] {
+            _ = try await accountService.createAccount(
+                name: name,
+                type: .bank,
+                openingBalance: 10_000,
+                currencyCode: "INR",
+                icon: "building.columns.fill",
+                colorToken: "blue",
+                lastFour: "4321"
+            )
+        }
+        let parser = SMSIngestionOrchestrator(
+            transactionService: SwiftDataTransactionService(modelContainer: container),
+            fingerprintService: ImportFingerprintService(modelContainer: container)
+        )
+        let sms = "HDFC Bank: Rs 520.00 debited from a/c **4321 on 25-AUG-26 to VPA swiggy@upi (UPI Ref no MASK-AMBIGUOUS-1). Avl bal: Rs 9,480.00"
+
+        let result = try await parser.ingest(smsText: sms, autoSaveIfEligible: true)
+        guard case .reviewRequired(let candidate, let warnings) = result else {
+            XCTFail("Ambiguous account identity must route to review, got \(result)")
+            return
+        }
+        XCTAssertTrue(candidate.needsReview)
+        XCTAssertEqual(candidate.accountLastFour, "4321")
+        XCTAssertTrue(warnings.contains { $0.localizedCaseInsensitiveContains("account") })
+        let records = try container.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        XCTAssertTrue(records.isEmpty)
     }
 }

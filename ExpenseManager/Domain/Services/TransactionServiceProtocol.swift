@@ -14,6 +14,46 @@ public enum TransactionImportResult: Equatable, Sendable {
     case duplicate
 }
 
+/// Posted cash-flow totals with refunds kept separate from gross expenses.
+public struct TransactionTotals: Equatable, Sendable {
+    public let income: Decimal
+    public let grossExpense: Decimal
+    public let refunds: Decimal
+
+    public var netSpending: Decimal {
+        grossExpense - refunds
+    }
+
+    public init(income: Decimal, grossExpense: Decimal, refunds: Decimal) {
+        self.income = income
+        self.grossExpense = grossExpense
+        self.refunds = refunds
+    }
+}
+
+/// One line of a split transaction (amounts must sum exactly to the parent).
+public struct TransactionSplitLine: Sendable, Equatable, Identifiable {
+    public let id: UUID
+    public var amount: Decimal
+    public var categoryName: String?
+    public var merchantName: String
+    public var notes: String?
+
+    public init(
+        id: UUID = UUID(),
+        amount: Decimal,
+        categoryName: String? = nil,
+        merchantName: String = "",
+        notes: String? = nil
+    ) {
+        self.id = id
+        self.amount = amount
+        self.categoryName = categoryName
+        self.merchantName = merchantName
+        self.notes = notes
+    }
+}
+
 /// Service protocol defining core transaction persistence and query operations.
 public protocol TransactionServiceProtocol: Sendable {
     
@@ -54,13 +94,37 @@ public protocol TransactionServiceProtocol: Sendable {
     
     /// Deletes a transaction by ID.
     func deleteTransaction(id: String) async throws
+
+    /// Splits one ledger transaction into multiple category/merchant lines that sum to the parent amount.
+    @discardableResult
+    func splitTransaction(id: String, splits: [TransactionSplitLine]) async throws -> [String]
     
     /// Calculates aggregate expense and income totals for a specific date range and currency.
     func calculateTotals(startDate: Date, endDate: Date, currencyCode: String) async throws -> (income: Decimal, expense: Decimal)
+
+    /// Calculates posted income, gross expense, refunds, and exact net spending.
+    func calculateSpendingTotals(startDate: Date, endDate: Date, currencyCode: String) async throws -> TransactionTotals
 }
 
 public extension TransactionServiceProtocol {
     func calculateTotals(startDate: Date, endDate: Date) async throws -> (income: Decimal, expense: Decimal) {
         return try await calculateTotals(startDate: startDate, endDate: endDate, currencyCode: CurrencyFormatter.defaultCurrencyCode)
+    }
+
+    func calculateSpendingTotals(
+        startDate: Date,
+        endDate: Date,
+        currencyCode: String
+    ) async throws -> TransactionTotals {
+        let totals = try await calculateTotals(
+            startDate: startDate,
+            endDate: endDate,
+            currencyCode: currencyCode
+        )
+        return TransactionTotals(
+            income: totals.income,
+            grossExpense: totals.expense,
+            refunds: .zero
+        )
     }
 }

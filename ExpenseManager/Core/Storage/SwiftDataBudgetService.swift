@@ -24,10 +24,12 @@ public final class SwiftDataBudgetService: BudgetServiceProtocol, Sendable {
     
     // MARK: - BudgetServiceProtocol
     
-    public func fetchBudgets(for month: Date) async throws -> [BudgetDTO] {
+    public func fetchBudgets(for month: Date, currencyCode: String?) async throws -> [BudgetDTO] {
         let calendar = Calendar.current
         let startOfMonth = DateFormatterHelper.shared.startOfMonth(for: month, calendar: calendar)
-        let endOfMonth = DateFormatterHelper.shared.endOfMonth(for: month, calendar: calendar)
+        guard let startOfNextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth) else {
+            return []
+        }
         
         let budgetDescriptor = FetchDescriptor<BudgetRecord>()
         let budgetRecords = try modelContext.fetch(budgetDescriptor)
@@ -36,7 +38,9 @@ public final class SwiftDataBudgetService: BudgetServiceProtocol, Sendable {
         let transactions = try modelContext.fetch(txDescriptor)
         
         let monthTransactions = transactions.filter { tx in
-            tx.transactionDate >= startOfMonth && tx.transactionDate <= endOfMonth && tx.transactionType == .expense && !tx.isPendingReview
+            tx.transactionDate >= startOfMonth && tx.transactionDate < startOfNextMonth && tx.isPosted &&
+            (tx.transactionType == .expense || tx.transactionType == .refund) &&
+            (currencyCode == nil || tx.currencyCode == currencyCode)
         }
         
         let categoryDescriptor = FetchDescriptor<CategoryRecord>()
@@ -44,18 +48,38 @@ public final class SwiftDataBudgetService: BudgetServiceProtocol, Sendable {
         let categoryMap = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0.name) })
         
         return budgetRecords
-            .filter { calendar.isDate($0.month, equalTo: month, toGranularity: .month) }
+            .filter {
+                calendar.isDate($0.month, equalTo: month, toGranularity: .month) &&
+                (currencyCode == nil || $0.currencyCode == currencyCode)
+            }
             .map { record in
-                let spent: Decimal
+                var grossExpense: Decimal = .zero
+                var refunds: Decimal = .zero
                 let categoryName: String?
                 
                 if let catID = record.categoryID {
-                    spent = monthTransactions
-                        .filter { $0.category?.id == catID || $0.category?.name == catID }
-                        .reduce(Decimal.zero) { $0 + $1.amount }
+                    for transaction in monthTransactions where transaction.category?.id == catID || transaction.category?.name == catID {
+                        switch transaction.transactionType {
+                        case .expense:
+                            grossExpense += transaction.amount
+                        case .refund:
+                            refunds += transaction.amount
+                        default:
+                            break
+                        }
+                    }
                     categoryName = categoryMap[catID] ?? catID
                 } else {
-                    spent = monthTransactions.reduce(Decimal.zero) { $0 + $1.amount }
+                    for transaction in monthTransactions {
+                        switch transaction.transactionType {
+                        case .expense:
+                            grossExpense += transaction.amount
+                        case .refund:
+                            refunds += transaction.amount
+                        default:
+                            break
+                        }
+                    }
                     categoryName = "Overall Monthly Budget"
                 }
                 
@@ -63,8 +87,11 @@ public final class SwiftDataBudgetService: BudgetServiceProtocol, Sendable {
                     id: record.id,
                     categoryID: record.categoryID,
                     categoryName: categoryName,
+                    currencyCode: record.currencyCode,
                     limitAmount: record.limitAmount,
-                    spentAmount: spent,
+                    spentAmount: grossExpense - refunds,
+                    grossExpenseAmount: grossExpense,
+                    refundAmount: refunds,
                     month: record.month,
                     alertThresholdPercent: record.alertThresholdPercent
                 )
@@ -76,14 +103,18 @@ public final class SwiftDataBudgetService: BudgetServiceProtocol, Sendable {
         categoryID: String?,
         limitAmount: Decimal,
         month: Date,
-        alertThresholdPercent: Int
+        alertThresholdPercent: Int,
+        currencyCode: String
     ) async throws -> String {
+        try MoneyValidation.validate(amount: limitAmount, currencyCode: currencyCode)
         let calendar = Calendar.current
         let descriptor = FetchDescriptor<BudgetRecord>()
         let existingBudgets = try modelContext.fetch(descriptor)
         
         if let existing = existingBudgets.first(where: {
-            $0.categoryID == categoryID && calendar.isDate($0.month, equalTo: month, toGranularity: .month)
+            $0.categoryID == categoryID &&
+            $0.currencyCode == currencyCode &&
+            calendar.isDate($0.month, equalTo: month, toGranularity: .month)
         }) {
             existing.limitAmount = limitAmount
             existing.alertThresholdPercent = alertThresholdPercent
@@ -94,6 +125,7 @@ public final class SwiftDataBudgetService: BudgetServiceProtocol, Sendable {
             let record = BudgetRecord(
                 id: UUID().uuidString,
                 categoryID: categoryID,
+                currencyCode: currencyCode,
                 limitAmount: limitAmount,
                 month: month,
                 alertThresholdPercent: alertThresholdPercent,
@@ -106,8 +138,8 @@ public final class SwiftDataBudgetService: BudgetServiceProtocol, Sendable {
         }
     }
     
-    public func calculateBudgetPace(categoryID: String?, month: Date) async throws -> Decimal {
-        let budgets = try await fetchBudgets(for: month)
+    public func calculateBudgetPace(categoryID: String?, month: Date, currencyCode: String) async throws -> Decimal {
+        let budgets = try await fetchBudgets(for: month, currencyCode: currencyCode)
         guard let budget = budgets.first(where: { $0.categoryID == categoryID }) else {
             return .zero
         }

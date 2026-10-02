@@ -102,12 +102,43 @@ final class VoiceAndIntentTests: XCTestCase {
     
     func testLogExpenseIntentValidation() async throws {
         let intent = LogExpenseIntent(
-            amount: 0.0,
+            amount: "0",
             merchant: "Swiggy"
         )
         
         let result = try await intent.perform()
         // Zero amount must return validation message
+        XCTAssertNotNil(result)
+    }
+
+    func testLogExpenseIntentDecimalBoundaryValidation() {
+        XCTAssertEqual(
+            ExpenseManagerIntentAmountValidator.parse("9007199254740993.12", currencyCode: "INR"),
+            Decimal(string: "9007199254740993.12")
+        )
+        XCTAssertNil(ExpenseManagerIntentAmountValidator.parse("12.345", currencyCode: "INR"))
+        XCTAssertNil(ExpenseManagerIntentAmountValidator.parse("NaN", currencyCode: "INR"))
+        XCTAssertNil(ExpenseManagerIntentAmountValidator.parse("0", currencyCode: "INR"))
+        XCTAssertNil(ExpenseManagerIntentAmountValidator.parse("12.00", currencyCode: "inr"))
+        XCTAssertEqual(
+            ExpenseManagerIntentAmountValidator.parse("12.345", currencyCode: "KWD"),
+            Decimal(string: "12.345")
+        )
+    }
+
+    func testAppIntentsRespectAppLockPreference() async throws {
+        let preferences = CurrencyFormatter.preferences
+        let previous = preferences.object(forKey: ExpenseManagerIntentSecurity.lockPreferenceKey)
+        defer {
+            if let previous {
+                preferences.set(previous, forKey: ExpenseManagerIntentSecurity.lockPreferenceKey)
+            } else {
+                preferences.removeObject(forKey: ExpenseManagerIntentSecurity.lockPreferenceKey)
+            }
+        }
+
+        preferences.set(true, forKey: ExpenseManagerIntentSecurity.lockPreferenceKey)
+        let result = try await LogExpenseIntent(amount: "12.00", merchant: "Swiggy").perform()
         XCTAssertNotNil(result)
     }
     
@@ -127,5 +158,25 @@ final class VoiceAndIntentTests: XCTestCase {
         
         let result = try await intent.perform()
         XCTAssertNotNil(result)
+    }
+
+    func testSMSIngestionCandidateDoesNotRetainRawMessage() async throws {
+        let rawMessage = "HDFC Bank: Rs 520.00 debited from a/c **4321 on 25-AUG-26 to VPA swiggy@upi"
+        let result = try await SMSIngestionOrchestrator().ingest(
+            smsText: rawMessage,
+            autoSaveIfEligible: false
+        )
+
+        switch result {
+        case .reviewRequired(let candidate, _):
+            XCTAssertEqual(candidate.source, .sms)
+            XCTAssertNil(candidate.notes)
+            XCTAssertFalse(candidate.merchantName.contains(rawMessage))
+        case .saved(let candidate, _):
+            XCTAssertEqual(candidate.source, .sms)
+            XCTAssertNil(candidate.notes)
+        default:
+            XCTFail("Expected a sanitized SMS candidate, got \(result)")
+        }
     }
 }

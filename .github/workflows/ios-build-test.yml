@@ -5,10 +5,17 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
-    runs-on: macos-14
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
 
     steps:
     - uses: actions/checkout@v4
@@ -16,11 +23,13 @@ jobs:
     - name: Install XcodeGen
       run: brew install xcodegen
 
-    - name: Generate Xcode Project
-      run: xcodegen generate
+    - name: Build and run unit and UI tests
+      run: bash scripts/verify-ios.sh
 
-    - name: Build and Test
-      run: |
-        xcodebuild -scheme ExpenseManager \
-          -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
-          clean test
+    - name: Preserve build logs and native test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-verification-${{ github.sha }}
+        path: build/verification/
+        if-no-files-found: warn

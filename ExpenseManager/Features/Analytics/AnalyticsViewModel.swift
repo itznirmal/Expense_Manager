@@ -43,8 +43,31 @@ public struct MonthlyCashFlowItem: Identifiable, Sendable, Equatable {
     public let monthDate: Date
     public let monthLabel: String
     public let income: Decimal
+    public let grossExpense: Decimal
+    public let refundAmount: Decimal
+    /// Net expense after subtracting refunds.
     public let expense: Decimal
     
+    public init(
+        id: String,
+        monthDate: Date,
+        monthLabel: String,
+        income: Decimal,
+        expense: Decimal,
+        grossExpense: Decimal? = nil,
+        refundAmount: Decimal = .zero
+    ) {
+        self.id = id
+        self.monthDate = monthDate
+        self.monthLabel = monthLabel
+        self.income = income
+        self.grossExpense = grossExpense ?? (expense + refundAmount)
+        self.refundAmount = refundAmount
+        self.expense = expense
+    }
+
+    public var netExpense: Decimal { expense }
+    public var expenseLabel: String { refundAmount > .zero ? "Net spending" : "Spending" }
     public var incomeDouble: Double { NSDecimalNumber(decimal: income).doubleValue }
     public var expenseDouble: Double { NSDecimalNumber(decimal: expense).doubleValue }
     public var netSavings: Decimal { income - expense }
@@ -54,11 +77,39 @@ public struct MonthlyCashFlowItem: Identifiable, Sendable, Equatable {
 public struct CategorySpendingItem: Identifiable, Sendable, Equatable {
     public let id: String
     public let categoryName: String
+    public let grossExpense: Decimal
+    public let refundAmount: Decimal
+    /// Net spending after refunds, retained as the existing totalAmount API.
     public let totalAmount: Decimal
     public let percentage: Double
     public let colorToken: String
     public let icon: String
+    public let transactionCount: Int
     
+    public init(
+        id: String,
+        categoryName: String,
+        totalAmount: Decimal,
+        percentage: Double,
+        colorToken: String,
+        icon: String,
+        transactionCount: Int = 0,
+        grossExpense: Decimal? = nil,
+        refundAmount: Decimal = .zero
+    ) {
+        self.id = id
+        self.categoryName = categoryName
+        self.grossExpense = grossExpense ?? (totalAmount + refundAmount)
+        self.refundAmount = refundAmount
+        self.totalAmount = totalAmount
+        self.percentage = percentage
+        self.colorToken = colorToken
+        self.icon = icon
+        self.transactionCount = transactionCount
+    }
+
+    public var netAmount: Decimal { totalAmount }
+    public var amountLabel: String { refundAmount > .zero ? "Net spending" : "Spending" }
     public var totalAmountDouble: Double { NSDecimalNumber(decimal: totalAmount).doubleValue }
 }
 
@@ -79,8 +130,31 @@ public struct TopMerchantItem: Identifiable, Sendable, Equatable {
     public let id: String
     public let merchantName: String
     public let totalAmount: Decimal
+    public let grossExpense: Decimal
+    public let refundAmount: Decimal
     public let transactionCount: Int
     public let categorySuggestion: String?
+
+    public init(
+        id: String,
+        merchantName: String,
+        totalAmount: Decimal,
+        transactionCount: Int,
+        categorySuggestion: String?,
+        grossExpense: Decimal? = nil,
+        refundAmount: Decimal = .zero
+    ) {
+        self.id = id
+        self.merchantName = merchantName
+        self.totalAmount = totalAmount
+        self.grossExpense = grossExpense ?? (totalAmount + refundAmount)
+        self.refundAmount = refundAmount
+        self.transactionCount = transactionCount
+        self.categorySuggestion = categorySuggestion
+    }
+
+    public var netAmount: Decimal { totalAmount }
+    public var amountLabel: String { refundAmount > .zero ? "Net spending" : "Spending" }
 }
 
 @Observable
@@ -90,12 +164,19 @@ public final class AnalyticsViewModel {
     // MARK: - State Properties
     
     public var selectedHorizon: AnalyticsTimeHorizon = .oneMonth
+    public var selectedCurrencyCode: String = CurrencyFormatter.defaultCurrencyCode
+    public var availableCurrencyCodes: [String] = []
     public var totalIncome: Decimal = .zero
+    public var grossExpense: Decimal = .zero
+    public var refundAmount: Decimal = .zero
     public var totalExpense: Decimal = .zero
     public var monthlyCashFlows: [MonthlyCashFlowItem] = []
     public var categoryBreakdowns: [CategorySpendingItem] = []
     public var dailySpendingTrend: [DailySpendItem] = []
     public var topMerchants: [TopMerchantItem] = []
+
+    public var categoryBreakdown: [CategorySpendingItem] { categoryBreakdowns }
+    public var currencyCodes: [String] { availableCurrencyCodes }
     
     public var isLoading: Bool = false
     public var errorMessage: String? = nil
@@ -105,12 +186,18 @@ public final class AnalyticsViewModel {
     public var netSavings: Decimal {
         totalIncome - totalExpense
     }
+
+    public var netExpense: Decimal { totalExpense }
+
+    public var totalExpenseLabel: String {
+        refundAmount > .zero ? "Net spending" : "Spending"
+    }
     
     public var savingsRate: Double {
         guard totalIncome > .zero else { return 0.0 }
-        let inc = NSDecimalNumber(decimal: totalIncome).doubleValue
-        let exp = NSDecimalNumber(decimal: totalExpense).doubleValue
-        return max(-100.0, min(100.0, ((inc - exp) / inc) * 100.0))
+        let savingsRatio = (totalIncome - totalExpense) / totalIncome
+        let savingsRatioDouble = NSDecimalNumber(decimal: savingsRatio).doubleValue
+        return max(-100.0, min(100.0, savingsRatioDouble * 100.0))
     }
     
     public var averageDailyExpense: Decimal {
@@ -120,6 +207,13 @@ public final class AnalyticsViewModel {
     }
     
     public init() {}
+
+    public func selectCurrency(_ currencyCode: String, container: DependencyContainer) async {
+        guard availableCurrencyCodes.contains(currencyCode) else { return }
+        CurrencyFormatter.setPreferredCurrency(currencyCode)
+        selectedCurrencyCode = currencyCode
+        await loadAnalytics(container: container)
+    }
     
     // MARK: - Aggregation & Computation
     
@@ -138,47 +232,67 @@ public final class AnalyticsViewModel {
         let endDate = DateFormatterHelper.shared.endOfMonth(for: now, calendar: calendar)
         
         do {
-            let transactions = try await container.transactionService.fetchTransactions(
+            async let fetchedTransactions = container.transactionService.fetchTransactions(
                 startDate: startDate,
                 endDate: endDate,
                 categoryID: nil,
                 accountID: nil
             )
+            async let fetchedBudgets = container.budgetService.fetchBudgets(for: now, currencyCode: nil)
+            let (allTransactions, currentBudgets) = try await (fetchedTransactions, fetchedBudgets)
+
+            availableCurrencyCodes = Array(Set(
+                allTransactions.map(\.currencyCode) + currentBudgets.map(\.currencyCode)
+            )).sorted()
+            let preferredCurrencyCode = CurrencyFormatter.defaultCurrencyCode
+            if availableCurrencyCodes.contains(preferredCurrencyCode) {
+                selectedCurrencyCode = preferredCurrencyCode
+            } else if let first = availableCurrencyCodes.first, !availableCurrencyCodes.contains(selectedCurrencyCode) {
+                selectedCurrencyCode = first
+            }
+            let transactions = allTransactions.filter { $0.currencyCode == selectedCurrencyCode }
             
             // 1. Calculate Summary Totals
             var inc: Decimal = .zero
-            var exp: Decimal = .zero
+            var grossExp: Decimal = .zero
+            var refunds: Decimal = .zero
             for tx in transactions {
                 switch tx.type {
-                case .income, .refund:
+                case .income:
                     inc += tx.amount
+                case .refund:
+                    refunds += tx.amount
                 case .expense:
-                    exp += tx.amount
+                    grossExp += tx.amount
                 case .transfer, .cashWithdrawal, .unknown:
                     break
                 }
             }
             self.totalIncome = inc
-            self.totalExpense = exp
+            self.grossExpense = grossExp
+            self.refundAmount = refunds
+            self.totalExpense = grossExp - refunds
             
             // 2. Monthly Cash Flow Time Series
-            var cashFlowMap: [String: (date: Date, label: String, inc: Decimal, exp: Decimal)] = [:]
+            var cashFlowMap: [String: (date: Date, label: String, inc: Decimal, gross: Decimal, refunds: Decimal)] = [:]
             for m in 0..<months {
                 if let mDate = calendar.date(byAdding: .month, value: -m, to: now) {
                     let key = DateFormatterHelper.shared.monthYear(for: mDate)
                     let monthStart = DateFormatterHelper.shared.startOfMonth(for: mDate, calendar: calendar)
                     let label = calendar.shortMonthSymbols[calendar.component(.month, from: mDate) - 1]
-                    cashFlowMap[key] = (monthStart, label, .zero, .zero)
+                    cashFlowMap[key] = (monthStart, label, .zero, .zero, .zero)
                 }
             }
             
             for tx in transactions {
                 let key = DateFormatterHelper.shared.monthYear(for: tx.transactionDate)
                 if var existing = cashFlowMap[key] {
-                    if tx.type == .income || tx.type == .refund {
+                    if tx.type == .income {
                         existing.inc += tx.amount
+                    } else if tx.type == .refund {
+                        existing.refunds += tx.amount
                     } else if tx.type == .expense {
-                        existing.exp += tx.amount
+                        existing.gross += tx.amount
                     }
                     cashFlowMap[key] = existing
                 }
@@ -186,27 +300,44 @@ public final class AnalyticsViewModel {
             
             self.monthlyCashFlows = cashFlowMap.values
                 .sorted(by: { $0.date < $1.date })
-                .map { MonthlyCashFlowItem(id: $0.label, monthDate: $0.date, monthLabel: $0.label, income: $0.inc, expense: $0.exp) }
+                .map {
+                    MonthlyCashFlowItem(
+                        id: $0.label,
+                        monthDate: $0.date,
+                        monthLabel: $0.label,
+                        income: $0.inc,
+                        expense: $0.gross - $0.refunds,
+                        grossExpense: $0.gross,
+                        refundAmount: $0.refunds
+                    )
+                }
             
             // 3. Category Spending Breakdown
-            let expenseTransactions = transactions.filter { $0.type == .expense && $0.amount > .zero }
-            let categoryGrouped = Dictionary(grouping: expenseTransactions) { tx in
+            let spendingTransactions = transactions.filter { ($0.type == .expense || $0.type == .refund) && $0.amount > .zero }
+            let categoryGrouped = Dictionary(grouping: spendingTransactions) { tx in
                 tx.categorySuggestion ?? "General"
             }
             
             var breakdowns: [CategorySpendingItem] = []
             for (catName, txList) in categoryGrouped {
-                let catTotal = txList.reduce(Decimal.zero) { $0 + $1.amount }
-                let pct = exp > .zero ? (NSDecimalNumber(decimal: catTotal).doubleValue / NSDecimalNumber(decimal: exp).doubleValue) : 0.0
+                let catGross = txList.filter { $0.type == .expense }.reduce(Decimal.zero) { $0 + $1.amount }
+                let catRefunds = txList.filter { $0.type == .refund }.reduce(Decimal.zero) { $0 + $1.amount }
+                let catNet = catGross - catRefunds
+                let pct = self.totalExpense > .zero
+                    ? NSDecimalNumber(decimal: catNet / self.totalExpense).doubleValue
+                    : 0.0
                 
                 breakdowns.append(
                     CategorySpendingItem(
                         id: catName,
                         categoryName: catName,
-                        totalAmount: catTotal,
+                        totalAmount: catNet,
                         percentage: pct,
                         colorToken: Self.colorToken(for: catName),
-                        icon: Self.icon(for: catName)
+                        icon: Self.icon(for: catName),
+                        transactionCount: txList.count,
+                        grossExpense: catGross,
+                        refundAmount: catRefunds
                     )
                 )
             }
@@ -222,10 +353,10 @@ public final class AnalyticsViewModel {
                 }
             }
             
-            for tx in expenseTransactions {
+            for tx in spendingTransactions {
                 let start = calendar.startOfDay(for: tx.transactionDate)
                 if dailyMap[start] != nil {
-                    dailyMap[start] = (dailyMap[start] ?? .zero) + tx.amount
+                    dailyMap[start] = (dailyMap[start] ?? .zero) + (tx.type == .refund ? -tx.amount : tx.amount)
                 }
             }
             
@@ -254,20 +385,23 @@ public final class AnalyticsViewModel {
             self.dailySpendingTrend = trendItems
             
             // 5. Top 5 Merchants
-            let merchantGrouped = Dictionary(grouping: expenseTransactions) { tx in
+            let merchantGrouped = Dictionary(grouping: spendingTransactions) { tx in
                 tx.merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             
             var merchants: [TopMerchantItem] = []
             for (mName, txList) in merchantGrouped where !mName.isEmpty {
-                let mTotal = txList.reduce(Decimal.zero) { $0 + $1.amount }
+                let mGross = txList.filter { $0.type == .expense }.reduce(Decimal.zero) { $0 + $1.amount }
+                let mRefunds = txList.filter { $0.type == .refund }.reduce(Decimal.zero) { $0 + $1.amount }
                 merchants.append(
                     TopMerchantItem(
                         id: mName,
                         merchantName: mName,
-                        totalAmount: mTotal,
+                        totalAmount: mGross - mRefunds,
                         transactionCount: txList.count,
-                        categorySuggestion: txList.first?.categorySuggestion
+                        categorySuggestion: txList.first?.categorySuggestion,
+                        grossExpense: mGross,
+                        refundAmount: mRefunds
                     )
                 )
             }

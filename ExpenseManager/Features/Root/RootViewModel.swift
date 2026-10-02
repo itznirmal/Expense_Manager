@@ -18,7 +18,7 @@ public final class RootViewModel {
     
     public func handleQuickActionTap(appState: AppState) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        appState.presentSheet(.smartTextEntry)
+        appState.presentSheet(.manualEntry())
     }
     
     public func handleLongPressQuickAction() {

@@ -11,8 +11,9 @@ import SwiftUI
 /// Modal interface for voice-based transaction entry featuring live speech recognition, waveform metering, and parsed transaction cards.
 public struct VoiceEntryView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     @State private var viewModel: VoiceEntryViewModel
     @State private var pulseAnimation = false
@@ -97,8 +98,6 @@ public struct VoiceEntryView: View {
                     merchantRuleService: container.merchantRuleService
                 )
                 await viewModel.loadContext()
-                // Auto-start recording on appear
-                viewModel.startListening()
             }
             .onDisappear {
                 // Ensure audio recording lifecycle is cleanly terminated on modal dismissal
@@ -126,7 +125,7 @@ public struct VoiceEntryView: View {
                         )
                     )
                     .frame(width: 8, height: barHeight)
-                    .animation(.spring(response: 0.15, dampingFraction: 0.7), value: level)
+                    .animation(reduceMotion ? nil : .spring(response: 0.15, dampingFraction: 0.7), value: level)
             }
         }
     }
@@ -140,7 +139,7 @@ public struct VoiceEntryView: View {
         } label: {
             ZStack {
                 // Animated Pulsing Ripple Rings
-                if viewModel.isRecording {
+                if viewModel.isRecording && !reduceMotion {
                     Circle()
                         .stroke(ColorTokens.criticalAccent.opacity(0.25), lineWidth: 3)
                         .frame(width: 130, height: 130)
@@ -340,5 +339,5 @@ public struct VoiceEntryView: View {
 #Preview("Voice Entry Idle") {
     VoiceEntryView(audioService: MockAudioRecordingService())
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

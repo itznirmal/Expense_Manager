@@ -11,7 +11,7 @@ import LocalAuthentication
 
 /// Full-screen biometric gate displayed when the application is locked via Face ID, Touch ID, or Passcode.
 public struct BiometricLockShieldView: View {
-    @Environment(\.appState) private var appState
+    @Environment(AppState.self) private var appState
     
     public init() {}
     

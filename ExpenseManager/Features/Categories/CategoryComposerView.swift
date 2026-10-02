@@ -10,8 +10,8 @@ import SwiftUI
 
 public struct CategoryComposerView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.appState) private var appState
-    @Environment(\.dependencyContainer) private var container
+    @Environment(AppState.self) private var appState
+    @Environment(DependencyContainer.self) private var container
     
     @State private var name: String = ""
     @State private var type: CategoryType = .expense
@@ -160,5 +160,5 @@ public struct CategoryComposerView: View {
 #Preview {
     CategoryComposerView()
         .environment(AppState())
-        .environment(\.dependencyContainer, .mock())
+        .environment(DependencyContainer.mock())
 }

@@ -12,40 +12,40 @@ import Observation
 @Observable
 @MainActor
 public final class CategoriesViewModel {
-    
+
     // MARK: - State Properties
-    
+
     public var allCategories: [CategoryDTO] = []
     public var selectedType: CategoryType? = nil
     public var isLoading: Bool = false
     public var errorMessage: String? = nil
-    
+
     public var isComposerPresented: Bool = false
-    
+
     // MARK: - Computed Properties
-    
+
     public var filteredCategories: [CategoryDTO] {
         guard let selectedType = selectedType else { return allCategories }
         return allCategories.filter { $0.type == selectedType || $0.type == .both }
     }
-    
+
     public var systemCategories: [CategoryDTO] {
         filteredCategories.filter { $0.isSystem }
     }
-    
+
     public var customCategories: [CategoryDTO] {
         filteredCategories.filter { !$0.isSystem }
     }
-    
+
     public init() {}
-    
+
     // MARK: - Actions
-    
+
     public func loadCategories(container: DependencyContainer) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
-        
+
         do {
             try await container.categoryService.seedDefaultCategoriesIfNeeded()
             allCategories = try await container.categoryService.fetchCategories(type: nil)
@@ -53,7 +53,7 @@ public final class CategoriesViewModel {
             errorMessage = "Failed to load categories: \(error.localizedDescription)"
         }
     }
-    
+
     public func createCategory(
         name: String,
         icon: String,
@@ -66,7 +66,7 @@ public final class CategoriesViewModel {
             errorMessage = "Category name cannot be empty."
             return false
         }
-        
+
         do {
             try await container.categoryService.createCategory(
                 name: trimmedName,
@@ -80,6 +80,17 @@ public final class CategoriesViewModel {
         } catch {
             errorMessage = "Failed to create category: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    public func deleteCategory(id: String, container: DependencyContainer, appState: AppState) async {
+        do {
+            try await container.categoryService.deleteCategory(id: id)
+            await loadCategories(container: container)
+            appState.showToast(title: "Category Deleted", type: .info)
+        } catch {
+            errorMessage = error.localizedDescription
+            appState.showToast(title: "Delete Failed", message: error.localizedDescription, type: .error)
         }
     }
 }
