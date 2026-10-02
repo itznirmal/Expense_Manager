@@ -290,3 +290,11 @@ Evidence: evidence/transaction-services/iss-019/static-verification.txt; Expense
 Open: ISS-020.
 Blocked: Swift/Xcode build and XCTest execution require macOS/Xcode; this Windows host has no Swift toolchain.
 Next: Build and run the SMS atomic-ingestion and duplicate regressions on macOS/Xcode, then fix ISS-020.
+
+## 2026-10-02 — Product assessment and fresh iOS handoff
+Works: Completed a source-based product/reliability assessment and official-source market comparison. The user confirmed everyday spending with optional budgets as the target audience and permits a fresh direction. A portable brief records the provisional rating, current findings, prior remediation lessons, narrower V1, financial/privacy contracts, regression fixtures, and staged verification gates.
+Changed: Added docs/Expense_Tracker_iOS_Rebuild_Brief.md and evidence/product-assessment/2026-10-02/. Application code and the frozen QUALITY_BAR.md were not changed.
+Evidence: docs/Expense_Tracker_iOS_Rebuild_Brief.md; evidence/product-assessment/2026-10-02/assessment-basis.txt; evidence/product-assessment/2026-10-02/source-observations.txt; official sources linked in the brief. Parent reviewed both source audits and a separate brief critique, integrating supported findings and corrections.
+Open: Existing ISS-020 remains open. The brief records additional selected source findings without altering historical issue statuses or claiming fixes. Current build, test-run, CI, rendered UI, and physical-device behavior remain unverified.
+Blocked: Native execution requires macOS/Xcode or device evidence; no Swift/Xcode tools are present on this Windows host. This does not block the completed analysis/handoff task.
+Next: Use the new brief for a fresh iOS build, beginning with a real native build/test baseline and then the manual-capture/ledger/History slice.

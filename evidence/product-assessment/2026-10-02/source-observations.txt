@@ -1,0 +1,469 @@
+Static source observations at 6fda90203cc7fd7b8982c23ad8bb8944ae8cc86d; captured 2026-10-02
+These excerpts are source evidence, not executed behavior.
+
+ExpenseManager/Core/Voice/AudioRecordingService.swift
+108:         // Reset previous state
+109:         await stopRecording()
+110:         
+111:         guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+112:             throw VoiceRecordingError.recognizerUnavailable
+113:         }
+114:         
+115:         let authorized = await requestAuthorization()
+116:         guard authorized else {
+117:             throw VoiceRecordingError.speechRecognitionPermissionDenied
+118:         }
+119:         
+120:         lock.withLock {
+121:             _isRecording = true
+122:             _audioPower = 0.0
+123:             hasHeardSpeech = false
+124:         }
+125:         
+126:         do {
+127:             #if os(iOS)
+128:             let audioSession = AVAudioSession.sharedInstance()
+129:             try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+130:             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+131:             #endif
+132:             
+133:             let engine = AVAudioEngine()
+134:             self.audioEngine = engine
+135:             
+136:             let request = SFSpeechAudioBufferRecognitionRequest()
+137:             request.shouldReportPartialResults = true
+138:             request.addsPunctuation = true
+139:             // Enforce 100% on-device speech processing to guarantee privacy invariants
+140:             request.requiresOnDeviceRecognition = true
+141:             self.recognitionRequest = request
+142:             
+
+ExpenseManager/Core/AppIntents/LogExpenseIntent.swift
+18:     public static var openAppWhenRun: Bool = false
+19:     
+20:     @Parameter(title: "Amount", description: "The amount spent (e.g. 250.00)")
+21:     public var amount: Double
+22:     
+23:     @Parameter(title: "Merchant", description: "Where the money was spent (e.g. Swiggy, Uber, Starbucks)")
+
+ExpenseManager/Core/AppIntents/LogExpenseIntent.swift
+60:         }
+61:         
+62:         // Exact decimal conversion without precision loss
+63:         let exactAmount = Decimal(string: "\(amount)") ?? Decimal(amount)
+64:         
+
+ExpenseManager/Core/Export/DataExportService.swift
+239:     public func validateBackupPayload(_ data: Data) throws -> BackupPayload {
+240:         let decoder = Self.createJSONDecoder()
+241:         let payload: BackupPayload
+242:         do {
+243:             payload = try decoder.decode(BackupPayload.self, from: data)
+244:         } catch {
+245:             throw DataExportError.backupDecodingFailed(error.localizedDescription)
+246:         }
+247:         
+248:         guard payload.schemaVersion <= 1 else {
+249:             throw DataExportError.unsupportedSchemaVersion(payload.schemaVersion)
+250:         }
+251:         
+252:         // Structural validation
+253:         guard !payload.data.categories.isEmpty else {
+254:             throw DataExportError.backupDecodingFailed("Payload is empty or missing essential categories.")
+255:         }
+256:         
+257:         for tx in payload.data.transactions {
+258:             guard tx.amount >= 0 else {
+259:                 throw DataExportError.backupDecodingFailed("Corrupted negative amount found in transactions.")
+260:             }
+261:         }
+262:         
+263:         // Validate SHA-256 checksum integrity
+264:         let encoder = Self.createJSONEncoder()
+265:         let reencodedData = try encoder.encode(payload.data)
+266:         let computedChecksum = Self.computeSHA256(for: reencodedData)
+267:         
+268:         guard computedChecksum.lowercased() == payload.checksum.lowercased() else {
+269:             throw DataExportError.checksumMismatch(expected: payload.checksum, actual: computedChecksum)
+270:         }
+271:         
+272:         return payload
+273:     }
+274:     
+275:     public func restoreJSONBackup(from data: Data) async throws -> BackupRestoreResult {
+
+ExpenseManager/Features/Root/RootView.swift
+68:             case .transactionDetail(let tx):
+69:                 TransactionDetailView(transaction: tx)
+70:             case .transactionFilter:
+71:                 TransactionFilterSheetView(viewModel: TransactionsListViewModel())
+72:             case .transactionBatchCategorize:
+73:                 Text("Batch Categorize")
+74:             }
+75:         }
+76:     }
+77:     
+78:     // MARK: - Main Tab Content
+79:     
+80:     private func mainTabContent(state: AppState) -> some View {
+81:         @Bindable var bindableState = state
+
+ExpenseManager/Features/Settings/SettingsView.swift
+32:                 // MARK: - 1. General Preferences
+33:                 Section("Preferences") {
+34:                     HStack {
+35:                         Label("Default Currency", systemImage: "indianrupeesign.circle")
+36:                         Spacer()
+37:                         Text("INR (₹)")
+38:                             .foregroundStyle(ColorTokens.textSecondary)
+39:                     }
+40:                     
+41:                     Toggle(isOn: Binding(
+42:                         get: { appState.requireBiometrics },
+43:                         set: { vm.toggleBiometrics(enable: $0, appState: appState) }
+44:                     )) {
+45:                         Label("Face ID / Passcode", systemImage: "faceid")
+46:                     }
+
+ExpenseManagerUITests/ExpenseManagerUITests.swift
+24:     }
+25: 
+26:     /// Verifies that the app launches cleanly into Dashboard and allows seamless tab navigation.
+27:     func testAppLaunchAndTabBarNavigation() throws {
+28:         // 1. Verify Dashboard Root Navigation Title exists
+29:         let dashboardNavTitle = app.navigationBars["Expense Manager"]
+30:         XCTAssertTrue(dashboardNavTitle.waitForExistence(timeout: 5.0), "Dashboard should be visible upon launch.")
+31: 
+32:         // 2. Navigate to Transactions Tab
+33:         let transactionsTab = app.tabBars.buttons["Transactions"]
+34:         if transactionsTab.exists {
+35:             transactionsTab.tap()
+36:             let transactionsNavTitle = app.navigationBars["Transactions"]
+37:             XCTAssertTrue(transactionsNavTitle.waitForExistence(timeout: 3.0), "Transactions screen should load.")
+38:         }
+39: 
+40:         // 3. Navigate to Budgets Tab
+41:         let budgetsTab = app.tabBars.buttons["Budgets"]
+42:         if budgetsTab.exists {
+43:             budgetsTab.tap()
+44:             let budgetsNavTitle = app.navigationBars["Budgets"]
+45:             XCTAssertTrue(budgetsNavTitle.waitForExistence(timeout: 3.0), "Budgets screen should load.")
+46:         }
+47: 
+48:         // 4. Navigate to Analytics Tab
+49:         let analyticsTab = app.tabBars.buttons["Analytics"]
+50:         if analyticsTab.exists {
+51:             analyticsTab.tap()
+52:             let analyticsNavTitle = app.navigationBars["Analytics"]
+53:             XCTAssertTrue(analyticsNavTitle.waitForExistence(timeout: 3.0), "Analytics screen should load.")
+54:         }
+55: 
+56:         // 5. Navigate to Settings Tab
+57:         let settingsTab = app.tabBars.buttons["Settings"]
+58:         if settingsTab.exists {
+59:             settingsTab.tap()
+60:             let settingsNavTitle = app.navigationBars["Settings"]
+61:             XCTAssertTrue(settingsNavTitle.waitForExistence(timeout: 3.0), "Settings screen should load.")
+62:         }
+63:     }
+64: 
+65:     /// Verifies that the Smart Entry creation flow sheet can be presented and dismissed.
+66:     func testSmartEntrySheetPresentation() throws {
+67:         let smartAddButton = app.buttons["Smart Add"]
+68:         if smartAddButton.waitForExistence(timeout: 3.0) {
+69:             smartAddButton.tap()
+70:             
+71:             // Verify Smart Text entry modal is presented
+72:             let cancelOrDoneButton = app.buttons["Cancel"]
+73:             if cancelOrDoneButton.waitForExistence(timeout: 3.0) {
+74:                 cancelOrDoneButton.tap()
+75:             }
+76:         }
+77:     }
+78: }
+79: 
+80: 
+81: 
+
+ExpenseManager/Core/Storage/SwiftDataTransactionService.swift
+57:     public func fetchRecentTransactions(limit: Int) async throws -> [TransactionCandidate] {
+58:         var descriptor = FetchDescriptor<TransactionRecord>(
+59:             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
+60:         )
+61:         descriptor.fetchLimit = limit
+62:         
+63:         let records = try modelContext.fetch(descriptor)
+64:         return records.filter { !$0.isPendingReview }.map { $0.toCandidate() }
+65:     }
+66:     
+67:     public func fetchPendingReviewTransactions() async throws -> [TransactionCandidate] {
+68:         let descriptor = FetchDescriptor<TransactionRecord>(
+69:             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
+70:         )
+71:         let records = try modelContext.fetch(descriptor)
+72:         return records.filter { $0.isPendingReview }.map { $0.toCandidate() }
+73:     }
+74:     
+75:     public func fetchTransactions(
+76:         startDate: Date?,
+77:         endDate: Date?,
+78:         categoryID: String?,
+79:         accountID: String?
+80:     ) async throws -> [TransactionCandidate] {
+81:         let descriptor = FetchDescriptor<TransactionRecord>(
+82:             sortBy: [SortDescriptor(\.transactionDate, order: .reverse)]
+83:         )
+84:         let records = try modelContext.fetch(descriptor)
+85:         
+86:         return records
+87:             .filter { record in
+88:                 if let start = startDate, record.transactionDate < start { return false }
+89:                 if let end = endDate, record.transactionDate > end { return false }
+90:                 if record.isPendingReview { return false }
+91:                 if let cat = categoryID, record.category?.id != cat && record.category?.name != cat { return false }
+92:                 if let acc = accountID,
+93:                    record.account?.id != acc &&
+94:                    record.account?.name != acc &&
+95:                    record.destinationAccount?.id != acc &&
+96:                    record.destinationAccount?.name != acc {
+97:                     return false
+98:                 }
+99:                 return true
+100:             }
+101:             .map { $0.toCandidate() }
+
+ExpenseManager/Core/Storage/SwiftDataTransactionService.swift
+320:     private func validateBalanceEffectRelationships(
+321:         for type: TransactionType,
+322:         currencyCode: String,
+323:         account: AccountRecord?,
+324:         destinationAccount: AccountRecord?
+325:     ) throws {
+326:         switch type {
+327:         case .transfer:
+328:             guard let source = account else {
+329:                 throw TransactionServiceError.transactionMissingSourceAccount
+330:             }
+331:             try validateCurrency(of: source, expected: currencyCode)
+332: 
+333:             guard let destination = destinationAccount else {
+334:                 throw TransactionServiceError.transferMissingDestination
+335:             }
+336:             guard source.id != destination.id else {
+337:                 throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
+338:             }
+339:             try validateCurrency(of: destination, expected: currencyCode)
+340: 
+341:         case .cashWithdrawal:
+342:             guard let source = account else {
+343:                 throw TransactionServiceError.transactionMissingSourceAccount
+344:             }
+345:             try validateCurrency(of: source, expected: currencyCode)
+346: 
+347:             guard let destination = destinationAccount,
+348:                   destination.accountType == .cash,
+349:                   !destination.isArchived else {
+350:                 throw TransactionServiceError.cashWithdrawalMissingCashAccount
+351:             }
+352:             try validateCurrency(of: destination, expected: currencyCode)
+353: 
+354:         case .expense, .income, .refund, .unknown:
+355:             break
+356:         }
+357:     }
+
+ExpenseManager/Core/Storage/SwiftDataBudgetService.swift
+35:         let txDescriptor = FetchDescriptor<TransactionRecord>()
+36:         let transactions = try modelContext.fetch(txDescriptor)
+37:         
+38:         let monthTransactions = transactions.filter { tx in
+39:             tx.transactionDate >= startOfMonth && tx.transactionDate <= endOfMonth && tx.transactionType == .expense && !tx.isPendingReview
+40:         }
+41:         
+42:         let categoryDescriptor = FetchDescriptor<CategoryRecord>()
+43:         let categories = try modelContext.fetch(categoryDescriptor)
+44:         let categoryMap = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0.name) })
+45:         
+46:         return budgetRecords
+47:             .filter { calendar.isDate($0.month, equalTo: month, toGranularity: .month) }
+48:             .map { record in
+49:                 let spent: Decimal
+50:                 let categoryName: String?
+51:                 
+52:                 if let catID = record.categoryID {
+53:                     spent = monthTransactions
+54:                         .filter { $0.category?.id == catID || $0.category?.name == catID }
+55:                         .reduce(Decimal.zero) { $0 + $1.amount }
+56:                     categoryName = categoryMap[catID] ?? catID
+57:                 } else {
+58:                     spent = monthTransactions.reduce(Decimal.zero) { $0 + $1.amount }
+
+ExpenseManager/Core/SMSParsing/SMSIngestionOrchestrator.swift
+59:         if let bankParsed = BankSMSParser.parse(smsText: smsText, referenceDate: referenceDate) {
+60:             accountMaskVal = bankParsed.accountMask
+61:             draft = ParsedTransactionDraft(
+62:                 type: bankParsed.direction,
+63:                 amount: bankParsed.amount,
+64:                 currencyCode: bankParsed.currencyCode,
+65:                 merchantName: bankParsed.merchant,
+66:                 inferredCategory: bankParsed.inferredCategory,
+67:                 accountSuggestion: bankParsed.bankName ?? "Bank Account",
+68:                 paymentMethod: bankParsed.paymentMethod,
+69:                 transactionDate: bankParsed.date,
+70:                 referenceNumber: bankParsed.referenceNumber,
+71:                 upiVPA: bankParsed.upiVPA,
+72:                 rawText: smsText
+73:             )
+
+ExpenseManager/Core/Export/DataExportService.swift
+337:             // 5. Restore Transactions
+338:             for tx in payload.data.transactions {
+339:                 let record = TransactionRecord(
+340:                     id: tx.id,
+341:                     type: TransactionType(rawValue: tx.type) ?? .expense,
+342:                     amount: tx.amount,
+343:                     currencyCode: tx.currencyCode,
+344:                     merchantName: tx.merchantName,
+345:                     category: tx.categoryID.flatMap { categoryMap[$0] },
+346:                     account: tx.accountID.flatMap { accountMap[$0] },
+347:                     destinationAccount: tx.destinationAccountID.flatMap { accountMap[$0] },
+348:                     paymentMethod: tx.paymentMethod.flatMap { PaymentMethod(rawValue: $0) },
+349:                     transactionDate: tx.transactionDate,
+350:                     notes: tx.notes,
+351:                     tags: tx.tags,
+352:                     source: InputSource(rawValue: tx.source) ?? .manual,
+353:                     sourceReference: tx.sourceReference,
+354:                     confidence: tx.confidence,
+355:                     createdAt: tx.createdAt,
+356:                     updatedAt: tx.updatedAt
+357:                 )
+358:                 record.isPendingReview = tx.isPendingReview
+359:                 record.isAccepted = tx.isAccepted
+360:                 record.reviewReasons = tx.reviewReasons
+
+ExpenseManager/Features/Root/RootView.swift
+22:         ZStack(alignment: .top) {
+23:             if appState.requireBiometrics && appState.isBiometricallyLocked {
+24:                 BiometricLockShieldView()
+25:                     .transition(.opacity)
+26:                     .zIndex(200)
+27:             } else {
+28:                 mainTabContent(state: state)
+29:             }
+30:             
+31:             // Toast Banner Overlay
+32:             if let toast = appState.activeToast {
+33:                 toastBanner(toast)
+34:                     .transition(.move(edge: .top).combined(with: .opacity))
+35:                     .zIndex(300)
+36:             }
+37:         }
+38:         .onChange(of: scenePhase) { _, newPhase in
+39:             if newPhase == .background || newPhase == .inactive {
+40:                 appState.lockApp()
+41:             }
+
+ExpenseManager/App/ExpenseManagerApp.swift
+13: struct ExpenseManagerApp: App {
+14:     @State private var appState = AppState()
+15:     private let databaseContainer = DatabaseContainer.shared
+16:     @State private var container: DependencyContainer
+17:     
+18:     init() {
+19:         let dbContainer = DatabaseContainer.shared
+20:         _container = State(initialValue: DependencyContainer.live(modelContainer: dbContainer.container))
+21:     }
+22:     
+23:     var body: some Scene {
+24:         WindowGroup {
+25:             RootView()
+26:                 .environment(appState)
+27:                 .environment(\.dependencyContainer, container)
+28:                 .modelContainer(databaseContainer.container)
+29:                 .task {
+30:                     // Seed default taxonomy on initial launch
+31:                     try? await container.categoryService.seedDefaultCategoriesIfNeeded()
+32:                 }
+33:         }
+
+ExpenseManager/App/AppState.swift
+205: // MARK: - SwiftUI Environment Key
+206: 
+207: private struct AppStateKey: EnvironmentKey {
+208:     static let defaultValue: AppState = AppState()
+209: }
+210: 
+211: public extension EnvironmentValues {
+212:     var appState: AppState {
+213:         get { self[AppStateKey.self] }
+214:         set { self[AppStateKey.self] = newValue }
+215:     }
+
+ExpenseManager/Core/DesignSystem/Typography.swift
+18:     public static let amountHero: Font = .system(size: 34, weight: .bold, design: .rounded)
+19:     
+20:     /// Large monetary amounts (e.g. Account Cards, Budget Totals)
+21:     public static let amountLarge: Font = .system(size: 28, weight: .bold, design: .rounded)
+22:     
+23:     /// Medium monetary amounts (e.g. Transaction Row Amounts)
+24:     public static let amountMedium: Font = .system(size: 20, weight: .semibold, design: .rounded)
+25:     
+26:     /// Small monetary amounts (e.g. Sub-item badges, micro-charts)
+27:     public static let amountSmall: Font = .system(size: 15, weight: .semibold, design: .rounded)
+
+ExpenseManager/Features/Dashboard/DashboardView.swift
+20:         NavigationStack {
+21:             ScrollView {
+22:                 VStack(spacing: 20) {
+23:                     // Pending Review Queue Banner
+24:                     if appState.pendingReviewCount > 0 {
+25:                         reviewQueueBanner
+26:                     }
+27:                     
+28:                     // Anomalous Transaction Alert (if any)
+29:                     if let firstAnomaly = viewModel.anomalousAlerts.first {
+30:                         anomalyAlertBanner(firstAnomaly)
+31:                     }
+32:                     
+33:                     // Hero Net Worth Card
+34:                     heroNetWorthCard
+35:                     
+36:                     // Monthly Cash Flow Card
+37:                     monthlyCashFlowCard
+38:                     
+39:                     // Quick Action Grid
+40:                     quickActionGrid
+41:                     
+42:                     // Spending Pace vs Budget Overview
+43:                     if viewModel.overallBudgetLimit > .zero {
+44:                         budgetPaceCard
+45:                     }
+46:                     
+47:                     // Top Spending Categories Carousel
+48:                     if !viewModel.topCategories.isEmpty {
+49:                         categorySpendingCarousel
+50:                     }
+51:                     
+52:                     // Recurring Subscriptions Preview
+53:                     if !viewModel.recurringSubscriptions.isEmpty {
+54:                         recurringSubscriptionsSection
+55:                     }
+56:                     
+57:                     // Recent Transactions Section Header
+58:                     recentTransactionsHeader
+59:                     
+60:                     // Recent Transactions List / Empty State
+61:                     if viewModel.recentTransactions.isEmpty {
+62:                         emptyTransactionsCard
+63:                     } else {
+64:                         VStack(spacing: 10) {
+65:                             ForEach(viewModel.recentTransactions) { item in
+66:                                 transactionRow(item)
+67:                             }
+68:                         }
+69:                     }
+70:                 }
+71:                 .padding()
+72:             }
+73:             .background(ColorTokens.backgroundPrimary)
+74:             .navigationTitle("Dashboard")

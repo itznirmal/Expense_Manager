@@ -1,0 +1,19 @@
+Expense tracker assessment basis - 2026-10-02 (Asia/Calcutta user date)
+Scope: existing iOS repository; source review and current official market/platform documentation; no application-code changes.
+Audience chosen by user: Everyday spending with optional budgets.
+Git HEAD: 6fda90203cc7fd7b8982c23ad8bb8944ae8cc86d
+Branch: main
+Initial working tree: clean according to git status --short (Git emitted global-ignore permission warnings).
+swift: not found on PATH
+xcodebuild: not found on PATH
+xcrun: not found on PATH
+Swift source files under ExpenseManager, including tests: 129
+Unit test source files: 21
+UI test methods: 2 source methods; not executed.
+Pre-existing evidence inventory:
+  evidence\transaction-services\iss-019\static-verification.txt
+  evidence\transaction-services\iss-017\static-verification.txt
+  evidence\transaction-services\iss-016\static-verification.txt
+  evidence\export\iss-018\static-verification.txt
+Not verified: compilation, XCTest results, CI run status, rendered UI, device performance, Speech network behavior, biometric lifecycle, Shortcuts background import, App Store readiness.
+Official sources are linked at the claims they support in docs/Expense_Tracker_iOS_Rebuild_Brief.md. Competitor facts are vendor claims, not hands-on observations.
