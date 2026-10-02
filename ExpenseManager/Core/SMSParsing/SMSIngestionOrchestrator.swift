@@ -175,7 +175,7 @@ public final class SMSIngestionOrchestrator: Sendable {
             } catch let error as TransactionServiceError
                 where Self.requiresAccountReview(error) {
                 return .reviewRequired(
-                    candidate: reviewCandidate(candidate),
+                    candidate: self.reviewCandidate(candidate),
                     warnings: reviewWarnings(for: candidate)
                 )
             }
@@ -203,7 +203,7 @@ public final class SMSIngestionOrchestrator: Sendable {
             } catch let error as TransactionServiceError
                 where Self.requiresAccountReview(error) {
                 return .reviewRequired(
-                    candidate: reviewCandidate(candidate),
+                    candidate: self.reviewCandidate(candidate),
                     warnings: reviewWarnings(for: candidate)
                 )
             }

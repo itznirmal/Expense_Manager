@@ -1,0 +1,5 @@
+Native run 36966232760 - commit ed44fc5addc7231e35b57754fc3a1b4d140bdc5b
+URL: https://github.com/itznirmal/Expense_Manager/actions/runs/36966232760
+Result: app compilation failed; tests cancelled.
+Remaining pre-existing body diagnostics: missing Typography.title2 aliases, SMS diagnostic referenceNumber argument, local reviewCandidate shadowing, malformed MainActor capture syntax in smart-text debounce.
+Corrected these narrow source references in the following commit.

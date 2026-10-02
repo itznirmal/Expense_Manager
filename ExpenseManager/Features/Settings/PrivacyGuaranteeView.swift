@@ -24,7 +24,7 @@ public struct PrivacyGuaranteeView: View {
                             .foregroundStyle(ColorTokens.incomeAccent)
                         
                         Text("Your records stay on your device")
-                            .font(Typography.title2)
+                            .font(Typography.title)
                             .foregroundStyle(ColorTokens.textPrimary)
                         
                         Text("Expense Manager has zero network permissions, zero cloud servers, and zero third-party telemetry SDKs. Your financial life stays entirely in your hands.")

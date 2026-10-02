@@ -181,6 +181,7 @@ public final class SMSDiagnosticsViewModel {
                         merchant: p.merchant,
                         date: p.date,
                         accountLastFour: p.accountMask,
+                        referenceNumber: p.referenceNumber,
                         windowSeconds: 300
                     )) ?? false
                     

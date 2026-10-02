@@ -250,7 +250,7 @@ public struct ReviewQueueView: View {
                 .foregroundStyle(ColorTokens.incomeAccent)
             
             Text("All Caught Up!")
-                .font(Typography.title2)
+                .font(Typography.title)
                 .foregroundStyle(ColorTokens.textPrimary)
             
             Text("No transactions currently need review. New incoming transactions from SMS, OCR, and Smart Text will appear here if ambiguous.")
