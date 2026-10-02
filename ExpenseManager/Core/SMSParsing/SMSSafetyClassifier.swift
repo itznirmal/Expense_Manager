@@ -241,7 +241,7 @@ public struct SMSSafetyClassifier: Sendable {
     private static func isBalanceOnlyAlert(_ text: String) -> Bool {
         // Must contain balance phrases but NO debit/credit/spent/paid/received action
         let hasBalancePhrase = text.range(
-            of: "\\b(?:available balance in|avail bal in|current balance is|avail bal:|balance is rs|avl bal)\\b",
+            of: "\\b(?:available balance in|avail bal in|current\\s+balance|avail bal:|balance is rs|avl bal)\\b",
             options: .regularExpression
         ) != nil
         
@@ -273,7 +273,8 @@ public struct SMSSafetyClassifier: Sendable {
             "\\b(?:spent on|spent at|spent rs|spent inr)\\b",
             "\\b(?:paid to|paid rs|paid inr|paid using)\\b",
             "\\b(?:withdrawn from|withdrawn at|atm cash wdl|cash withdrawal)\\b",
-            "\\b(?:sent rs|sent inr|transferred to|tranx of|purchase at)\\b"
+            "\\b(?:sent rs|sent inr|transferred to|purchase at)\\b",
+            "\\b(?:txn|tranx|transaction)\\s+of\\b.*\\bcard\\b"
         ]
         
         for pattern in debitPatterns {

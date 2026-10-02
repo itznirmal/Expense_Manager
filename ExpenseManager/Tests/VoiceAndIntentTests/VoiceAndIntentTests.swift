@@ -23,7 +23,7 @@ final class VoiceAndIntentTests: XCTestCase {
     override func setUp() async throws {
         mockAudioService = MockAudioRecordingService()
         mockParserService = MockParserService()
-        mockTxnService = MockTransactionService()
+        mockTxnService = MockTransactionService(sampleData: [])
         mockAccountService = MockAccountService()
         mockCategoryService = MockCategoryService()
         
@@ -60,13 +60,14 @@ final class VoiceAndIntentTests: XCTestCase {
         viewModel.startListening()
         XCTAssertTrue(viewModel.isRecording)
         XCTAssertEqual(viewModel.statusMessage, "Listening...")
-        
-        // Wait for mock audio service stream
-        try? await Task.sleep(nanoseconds: 600_000_000)
+
+        await waitForFinalTranscript()
         
         viewModel.stopListening()
         XCTAssertFalse(viewModel.isRecording)
-        
+
+        await waitForCandidate()
+
         // Ensure transcript and candidate were populated
         XCTAssertFalse(viewModel.liveTranscript.isEmpty)
         XCTAssertNotNil(viewModel.candidate)
@@ -75,8 +76,9 @@ final class VoiceAndIntentTests: XCTestCase {
     
     func testVoiceEntrySaveCandidate() async {
         viewModel.startListening()
-        try? await Task.sleep(nanoseconds: 600_000_000)
+        await waitForFinalTranscript()
         viewModel.stopListening()
+        await waitForCandidate()
         
         await viewModel.loadContext()
         let saveSuccess = await viewModel.saveCandidate()
@@ -86,6 +88,34 @@ final class VoiceAndIntentTests: XCTestCase {
         let recent = try? await mockTxnService.fetchRecentTransactions(limit: 5)
         XCTAssertEqual(recent?.count, 1)
         XCTAssertEqual(recent?.first?.amount, Decimal(540))
+        XCTAssertNil(recent?.first?.notes)
+    }
+
+    private func waitForFinalTranscript() async {
+        let pollInterval: UInt64 = 20_000_000
+        let timeout: UInt64 = 1_000_000_000
+        var elapsed: UInt64 = 0
+
+        while viewModel.liveTranscript != mockAudioService.simulatedFinalTranscript,
+              elapsed < timeout {
+            try? await Task.sleep(nanoseconds: pollInterval)
+            elapsed += pollInterval
+        }
+
+        XCTAssertEqual(viewModel.liveTranscript, mockAudioService.simulatedFinalTranscript)
+    }
+
+    private func waitForCandidate() async {
+        let pollInterval: UInt64 = 20_000_000
+        let timeout: UInt64 = 1_000_000_000
+        var elapsed: UInt64 = 0
+
+        while viewModel.candidate == nil, elapsed < timeout {
+            try? await Task.sleep(nanoseconds: pollInterval)
+            elapsed += pollInterval
+        }
+
+        XCTAssertNotNil(viewModel.candidate)
     }
     
     func testVoiceEntryPermissionDeniedHandling() async {

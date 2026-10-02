@@ -19,6 +19,7 @@ final class BudgetsEngineTests: XCTestCase {
     override func setUp() async throws {
         modelContainer = try DatabaseContainer.inMemory()
         dependencyContainer = DependencyContainer.live(modelContainer: modelContainer)
+        try await dependencyContainer.categoryService.seedDefaultCategoriesIfNeeded()
     }
     
     override func tearDown() async throws {
@@ -243,7 +244,7 @@ final class BudgetsEngineTests: XCTestCase {
             amount: Decimal(100),
             currencyCode: "INR",
             merchantName: "Cafe",
-            categorySuggestion: "Food",
+            categorySuggestion: "cat_food",
             accountSuggestion: inrAccount,
             transactionDate: now
         ))
@@ -252,7 +253,7 @@ final class BudgetsEngineTests: XCTestCase {
             amount: Decimal(25),
             currencyCode: "INR",
             merchantName: "Cafe refund",
-            categorySuggestion: "Food",
+            categorySuggestion: "cat_food",
             accountSuggestion: inrAccount,
             transactionDate: now
         ))
@@ -261,7 +262,7 @@ final class BudgetsEngineTests: XCTestCase {
             amount: Decimal(200),
             currencyCode: "USD",
             merchantName: "Store",
-            categorySuggestion: "Shopping",
+            categorySuggestion: "cat_shopping",
             accountSuggestion: usdAccount,
             transactionDate: now
         ))
@@ -271,7 +272,7 @@ final class BudgetsEngineTests: XCTestCase {
             amount: Decimal(900),
             currencyCode: "INR",
             merchantName: "Needs review",
-            categorySuggestion: "Food",
+            categorySuggestion: "cat_food",
             accountSuggestion: inrAccount,
             transactionDate: now,
             needsReview: true

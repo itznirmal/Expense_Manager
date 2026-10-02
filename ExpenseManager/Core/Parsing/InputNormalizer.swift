@@ -32,12 +32,12 @@ public struct InputNormalizer: Sendable {
         // 4. Standardize ellipses
         result = result.replacingOccurrences(of: "…", with: "...")
         
-        // 5. Replace multiple consecutive whitespace / tab characters with a single space
-        result = result.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
-        
-        // 6. Trim leading/trailing whitespace and newlines
-        result = result.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+        // 5. Collapse every whitespace run, including line breaks, to one space.
+        result = result
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
         return result
     }
     

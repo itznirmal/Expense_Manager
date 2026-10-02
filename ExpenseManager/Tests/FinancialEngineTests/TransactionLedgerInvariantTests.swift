@@ -211,6 +211,33 @@ final class TransactionLedgerInvariantTests: XCTestCase {
     }
 
     @MainActor
+    func testCashWithdrawalToItsSourceLeavesExistingExpenseUnchanged() async throws {
+        let bankID = try await makeAccount(name: "Checking", balance: 10_000, currencyCode: "INR")
+        let cashID = try await makeAccount(name: "Cash", type: .cash, balance: 5_000, currencyCode: "INR")
+        var candidate = TransactionCandidate(
+            amount: 2_000, currencyCode: "INR", merchantName: "Original expense",
+            accountSuggestion: bankID
+        )
+        let transactionID = try await transactionService.createTransaction(candidate)
+        candidate.type = .cashWithdrawal
+        candidate.accountSuggestion = cashID
+        do {
+            try await transactionService.updateTransaction(id: transactionID, candidate: candidate)
+            XCTFail("A cash withdrawal must not use the same account for both legs.")
+        } catch TransactionServiceError.transferSourceAndDestinationMustBeDistinct {
+            // Validation must happen before reversing the existing expense.
+        }
+        let bankBalance = try await accountService.getAccount(id: bankID)?.balance
+        let cashBalance = try await accountService.getAccount(id: cashID)?.balance
+        XCTAssertEqual(bankBalance, 8_000)
+        XCTAssertEqual(cashBalance, 5_000)
+        let record = try XCTUnwrap(try fetchTransactionRecord(id: transactionID))
+        XCTAssertEqual(record.transactionType, .expense)
+        XCTAssertEqual(record.amount, 2_000)
+        XCTAssertEqual(record.account?.id, bankID)
+    }
+
+    @MainActor
     func testCashWithdrawalUpdateValidatesSourceBeforeCreatingCashDestination() async throws {
         let accountID = try await makeAccount(name: "Checking", balance: 10_000, currencyCode: "INR")
         let original = TransactionCandidate(

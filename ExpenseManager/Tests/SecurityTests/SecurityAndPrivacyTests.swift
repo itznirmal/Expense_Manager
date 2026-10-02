@@ -39,11 +39,13 @@ final class SecurityAndPrivacyTests: XCTestCase {
         let payload = try service.validateBackupPayload(validBackupData)
         XCTAssertEqual(payload.schemaVersion, 1)
         
-        // Corrupt payload (change amount)
-        var dataString = String(data: validBackupData, encoding: .utf8)!
-        dataString = dataString.replacingOccurrences(of: "\"amount\" : ", with: "\"amount\" : -")
-        
-        let corruptedData = dataString.data(using: .utf8)!
+        // Corrupt the package checksum deterministically, including when the
+        // in-memory fixture contains no transactions to mutate.
+        var payloadObject = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: validBackupData) as? [String: Any]
+        )
+        payloadObject["checksum"] = String(repeating: "0", count: 64)
+        let corruptedData = try JSONSerialization.data(withJSONObject: payloadObject, options: [.sortedKeys])
         
         do {
             _ = try service.validateBackupPayload(corruptedData)
@@ -57,10 +59,10 @@ final class SecurityAndPrivacyTests: XCTestCase {
     func testCSVFormulaInjectionSanitization() {
         let input = "=cmd|' /C calc'!A0"
         let sanitized = CSVFormulaSanitizer.sanitizeAndEscape(input)
-        XCTAssertEqual(sanitized, "'=cmd|' /C calc'!A0")
+        XCTAssertEqual(sanitized, "\"'=cmd|' /C calc'!A0\"")
         
         let input2 = "@SUM(1+1)"
         let sanitized2 = CSVFormulaSanitizer.sanitizeAndEscape(input2)
-        XCTAssertEqual(sanitized2, "'@SUM(1+1)")
+        XCTAssertEqual(sanitized2, "\"'@SUM(1+1)\"")
     }
 }

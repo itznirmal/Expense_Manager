@@ -21,6 +21,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
         modelContainer = try DatabaseContainer.inMemory()
         dependencyContainer = DependencyContainer.live(modelContainer: modelContainer)
         appState = AppState()
+        try await dependencyContainer.categoryService.seedDefaultCategoriesIfNeeded()
     }
     
     override func tearDown() async throws {
@@ -97,7 +98,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
                 amount: Decimal(100000),
                 currencyCode: "INR",
                 merchantName: "Acme Corp",
-                categorySuggestion: "Salary",
+                categorySuggestion: "cat_salary",
                 accountSuggestion: bankId,
                 transactionDate: now
             )
@@ -110,7 +111,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
                 amount: Decimal(30000),
                 currencyCode: "INR",
                 merchantName: "Landlord",
-                categorySuggestion: "Rent",
+                categorySuggestion: "cat_bills",
                 accountSuggestion: bankId,
                 transactionDate: now
             )
@@ -123,7 +124,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
                 amount: Decimal(10000),
                 currencyCode: "INR",
                 merchantName: "Supermarket",
-                categorySuggestion: "Groceries",
+                categorySuggestion: "cat_groceries",
                 accountSuggestion: bankId,
                 transactionDate: now
             )
@@ -153,6 +154,14 @@ final class DashboardAndAnalyticsTests: XCTestCase {
             colorToken: "blue",
             lastFour: "5555"
         )
+
+        let travelCategoryID = try await dependencyContainer.categoryService.createCategory(
+            name: "Travel",
+            parentCategoryID: nil,
+            icon: "airplane",
+            colorToken: "blue",
+            type: .expense
+        )
         
         let now = Date()
         
@@ -163,7 +172,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
                 amount: Decimal(5000),
                 currencyCode: "INR",
                 merchantName: "Food Place",
-                categorySuggestion: "Food & Dining",
+                categorySuggestion: "cat_food",
                 accountSuggestion: bankId,
                 transactionDate: now
             )
@@ -175,7 +184,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
                 amount: Decimal(15000),
                 currencyCode: "INR",
                 merchantName: "Flight Ticket",
-                categorySuggestion: "Travel",
+                categorySuggestion: travelCategoryID,
                 accountSuggestion: bankId,
                 transactionDate: now
             )
@@ -360,7 +369,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
             amount: Decimal(100),
             currencyCode: "INR",
             merchantName: "Cafe",
-            categorySuggestion: "Food",
+            categorySuggestion: "cat_food",
             accountSuggestion: inrID,
             transactionDate: now
         ))
@@ -369,7 +378,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
             amount: Decimal(30),
             currencyCode: "INR",
             merchantName: "Cafe refund",
-            categorySuggestion: "Food",
+            categorySuggestion: "cat_food",
             accountSuggestion: inrID,
             transactionDate: now
         ))
@@ -378,7 +387,7 @@ final class DashboardAndAnalyticsTests: XCTestCase {
             amount: Decimal(500),
             currencyCode: "USD",
             merchantName: "Store",
-            categorySuggestion: "Shopping",
+            categorySuggestion: "cat_shopping",
             accountSuggestion: usdID,
             transactionDate: now
         ))

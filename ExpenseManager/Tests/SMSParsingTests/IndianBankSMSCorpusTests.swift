@@ -46,26 +46,26 @@ final class IndianBankSMSCorpusTests: XCTestCase {
     }
     
     func testPositiveCreditTransactions() {
-        let credits = [
-            "Rs.50000.00 credited to a/c **1234 on 01-08-24 from EMPLOYER. Avl Bal: Rs.55000.00 - HDFC Bank",
-            "Salary of INR 45000.00 credited to A/c XX4567 on 31-Jul-24. - ICICI Bank",
-            "Dear Customer, Rs.1000.00 has been credited to your A/c no. XXXXXX9876 on 10/10/24. - SBI",
-            "Received Rs 2000.00 from John Doe in A/c 5432 on 15-08-24. Avl Bal: Rs 10000.00. - Axis Bank",
-            "Refund of Rs.500.00 credited to Kotak Credit Card ending 8888.",
-            "Rs.50.00 credited to a/c **1234 on 01-08-24 from Cashback. Avl Bal: Rs.55000.00 - HDFC Bank",
-            "Refund of INR 450.00 credited to A/c XX4567 on 31-Jul-24. - ICICI Bank",
-            "Dear Customer, Rs.10.00 has been credited to your A/c no. XXXXXX9876 on 10/10/24. - SBI",
-            "Received Rs 20.00 from Jane Doe in A/c 5432 on 15-08-24. Avl Bal: Rs 10000.00. - Axis Bank",
-            "Rs 100 credited to your account via UPI."
+        let credits: [(text: String, expectedType: TransactionType)] = [
+            ("Rs.50000.00 credited to a/c **1234 on 01-08-24 from EMPLOYER. Avl Bal: Rs.55000.00 - HDFC Bank", .income),
+            ("Salary of INR 45000.00 credited to A/c XX4567 on 31-Jul-24. - ICICI Bank", .income),
+            ("Dear Customer, Rs.1000.00 has been credited to your A/c no. XXXXXX9876 on 10/10/24. - SBI", .income),
+            ("Received Rs 2000.00 from John Doe in A/c 5432 on 15-08-24. Avl Bal: Rs 10000.00. - Axis Bank", .income),
+            ("Refund of Rs.500.00 credited to Kotak Credit Card ending 8888.", .refund),
+            ("Rs.50.00 credited to a/c **1234 on 01-08-24 from Cashback. Avl Bal: Rs.55000.00 - HDFC Bank", .income),
+            ("Refund of INR 450.00 credited to A/c XX4567 on 31-Jul-24. - ICICI Bank", .refund),
+            ("Dear Customer, Rs.10.00 has been credited to your A/c no. XXXXXX9876 on 10/10/24. - SBI", .income),
+            ("Received Rs 20.00 from Jane Doe in A/c 5432 on 15-08-24. Avl Bal: Rs 10000.00. - Axis Bank", .income),
+            ("Rs 100 credited to your account via UPI.", .income)
         ]
         
-        for sms in credits {
-            let safety = SMSSafetyClassifier.classify(text: sms)
-            XCTAssertTrue(safety.isSafeForTransactionGeneration, "Failed safety: \(sms)")
+        for credit in credits {
+            let safety = SMSSafetyClassifier.classify(text: credit.text)
+            XCTAssertTrue(safety.isSafeForTransactionGeneration, "Failed safety: \(credit.text)")
             
-            let parsed = BankSMSParser.parse(smsText: sms)
-            XCTAssertNotNil(parsed, "Failed parse: \(sms)")
-            XCTAssertEqual(parsed?.direction, .income)
+            let parsed = BankSMSParser.parse(smsText: credit.text)
+            XCTAssertNotNil(parsed, "Failed parse: \(credit.text)")
+            XCTAssertEqual(parsed?.direction, credit.expectedType)
         }
     }
     

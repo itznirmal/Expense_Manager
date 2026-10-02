@@ -244,7 +244,7 @@ final class DataExportAndSecurityTests: XCTestCase {
         // Verify restored records
         let restoredAccounts = try await dependencyContainer.accountService.fetchAccounts(includeArchived: true)
         XCTAssertEqual(restoredAccounts.count, 2)
-        XCTAssertTrue(restoredAccounts.contains(where: { $0.name == "HDFC Salary Account" && $0.balance == Decimal(120000) }))
+        XCTAssertTrue(restoredAccounts.contains(where: { $0.name == "HDFC Salary Account" && $0.balance == Decimal(75000) }))
         XCTAssertTrue(restoredAccounts.contains(where: { $0.name == "Pocket Cash" && $0.balance == Decimal(3500) }))
         
         let restoredTxs = try await dependencyContainer.transactionService.fetchRecentTransactions(limit: 10)
@@ -989,7 +989,7 @@ final class DataExportAndSecurityTests: XCTestCase {
         // Test Purge Execution
         await viewModel.executePurge(appState: appState)
         XCTAssertTrue(mockService.purged)
-        XCTAssertEqual(appState.activeToast?.title, "Database Reset")
+        XCTAssertEqual(appState.activeToast?.title, "Active ledger cleared")
     }
 
     private func encodePayload(

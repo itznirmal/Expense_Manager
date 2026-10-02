@@ -12,6 +12,7 @@ import SwiftData
 /// Error types thrown during transaction service operations.
 public enum TransactionServiceError: LocalizedError, Sendable {
     case transactionNotFound(id: String)
+    case transactionIdentifierAlreadyExists(id: String)
     case contextSaveFailed(String)
     case transactionMissingSourceAccount
     case transferMissingDestination
@@ -27,6 +28,8 @@ public enum TransactionServiceError: LocalizedError, Sendable {
         switch self {
         case .transactionNotFound(let id):
             return "Transaction with identifier '\(id)' was not found."
+        case .transactionIdentifierAlreadyExists:
+            return "A transaction with this identifier already exists. Edit the existing entry instead."
         case .contextSaveFailed(let message):
             return "Failed to save transaction data: \(message)"
         case .transactionMissingSourceAccount:
@@ -500,6 +503,9 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
                   !destination.isArchived else {
                 throw TransactionServiceError.cashWithdrawalMissingCashAccount
             }
+            guard source.id != destination.id else {
+                throw TransactionServiceError.transferSourceAndDestinationMustBeDistinct
+            }
             try validateCurrency(of: destination, expected: currencyCode)
 
         case .expense, .income, .refund:
@@ -574,6 +580,9 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     private func insertTransaction(_ candidate: TransactionCandidate) throws -> TransactionRecord {
         try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
+        guard try fetchRecord(by: candidate.id.uuidString) == nil else {
+            throw TransactionServiceError.transactionIdentifierAlreadyExists(id: candidate.id.uuidString)
+        }
         let normalizedAmount = candidate.amount
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
         let resolvedAccount = try resolveAccountSuggestion(
@@ -783,8 +792,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         }
 
         let fuzzyMatches = accounts.filter {
-            $0.name.localizedCaseInsensitiveContains(identifierOrName) ||
-            identifierOrName.localizedCaseInsensitiveContains($0.name)
+            $0.name.localizedCaseInsensitiveContains(identifierOrName)
         }
         if fuzzyMatches.count == 1 {
             return fuzzyMatches[0]

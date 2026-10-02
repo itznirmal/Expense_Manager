@@ -438,7 +438,9 @@ public struct TransactionBackupDTO: Codable, Sendable, Equatable {
         if isPendingReview {
             try container.encode(isPendingReview, forKey: .isPendingReview)
         }
-        if !isAccepted {
+        // Preserve an explicit acceptance value for review rows so malformed
+        // pending/accepted combinations reach graph validation after decoding.
+        if isPendingReview || !isAccepted {
             try container.encode(isAccepted, forKey: .isAccepted)
         }
         if !reviewReasons.isEmpty {

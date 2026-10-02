@@ -169,7 +169,7 @@ public struct BankSMSParser: Sendable {
     // MARK: - Available Balance Extraction
     
     private static func extractAvailableBalance(from text: String) -> (balance: Decimal?, cleanedText: String) {
-        let pattern = "(?i)\\b(?:avl\\s*bal|avail\\s*bal|available\\s*balance|avail\\s*limit|avl\\s*lmt|total\\s*avail\\s*bal)\\s*(?:is|:)?\\s*(?:rs\\.?|inr|₹)?\\s*([0-9,]+(?:\\.[0-9]{1,2})?)"
+        let pattern = "(?i)\\b(?:avl\\s*bal|avail\\s*bal|available\\s*balance|avail\\s*limit|avl\\s*limit|avl\\s*lmt|total\\s*avail\\s*bal)\\s*(?:is|:)?\\s*(?:(?:rs\\.?|inr|₹)\\s*:?)?\\s*([0-9,]+(?:\\.[0-9]+)?)"
         
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return (nil, text)
@@ -183,7 +183,10 @@ public struct BankSMSParser: Sendable {
         var balance: Decimal? = nil
         if match.numberOfRanges > 1 {
             let balanceString = nsString.substring(with: match.range(at: 1))
-            balance = CurrencyFormatter.shared.parse(from: balanceString)
+            // Bank SMS commonly uses Indian grouping (for example, 1,45,000),
+            // independent of the device locale. Preserve the token as Decimal
+            // after removing separators instead of applying locale grouping rules.
+            balance = AmountParser.parseCleanDecimal(from: balanceString)
         }
         
         // Return cleaned text without the balance substring to prevent AmountParser conflict

@@ -68,7 +68,10 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
     public func createTransaction(_ candidate: TransactionCandidate) async throws -> String {
         try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
-        return lock.withLock {
+        return try lock.withLock {
+            guard !transactions.contains(where: { $0.id == candidate.id }) else {
+                throw TransactionServiceError.transactionIdentifierAlreadyExists(id: candidate.id.uuidString)
+            }
             transactions.append(candidate)
             return candidate.id.uuidString
         }
@@ -82,7 +85,7 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
     ) async throws -> TransactionImportResult {
         try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
-        return lock.withLock {
+        return try lock.withLock {
             let amount = candidate.amount
             let normalizedMerchant = candidate.merchantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let windowStart = candidate.transactionDate.addingTimeInterval(-300)
@@ -117,6 +120,10 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
 
             if isDuplicate {
                 return .duplicate
+            }
+
+            guard !transactions.contains(where: { $0.id == candidate.id }) else {
+                throw TransactionServiceError.transactionIdentifierAlreadyExists(id: candidate.id.uuidString)
             }
 
             transactions.append(candidate)

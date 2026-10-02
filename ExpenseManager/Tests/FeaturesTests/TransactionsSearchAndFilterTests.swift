@@ -21,6 +21,7 @@ final class TransactionsSearchAndFilterTests: XCTestCase {
         modelContainer = try DatabaseContainer.inMemory()
         dependencyContainer = DependencyContainer.live(modelContainer: modelContainer)
         appState = AppState()
+        try await dependencyContainer.categoryService.seedDefaultCategoriesIfNeeded()
     }
     
     override func tearDown() async throws {
@@ -40,7 +41,7 @@ final class TransactionsSearchAndFilterTests: XCTestCase {
             amount: Decimal(520),
             currencyCode: "INR",
             merchantName: "Swiggy Bangalore",
-            categorySuggestion: "Food & Dining",
+            categorySuggestion: "cat_food",
             transactionDate: now,
             notes: "Lunch with team"
         )
@@ -50,7 +51,7 @@ final class TransactionsSearchAndFilterTests: XCTestCase {
             amount: Decimal(1800),
             currencyCode: "INR",
             merchantName: "Shell Petrol Station",
-            categorySuggestion: "Fuel",
+            categorySuggestion: "cat_transport",
             transactionDate: now,
             notes: "Highway ride"
         )
@@ -60,7 +61,7 @@ final class TransactionsSearchAndFilterTests: XCTestCase {
             amount: Decimal(75000),
             currencyCode: "INR",
             merchantName: "Acme Corp",
-            categorySuggestion: "Salary",
+            categorySuggestion: "cat_salary",
             transactionDate: now,
             sourceReference: "NEFT/489102"
         )
@@ -135,14 +136,29 @@ final class TransactionsSearchAndFilterTests: XCTestCase {
     
     @MainActor
     func testBulkOperations() async throws {
+        let otherCategoryID = try await dependencyContainer.categoryService.createCategory(
+            name: "Other",
+            parentCategoryID: nil,
+            icon: "square.grid.2x2",
+            colorToken: "gray",
+            type: .expense
+        )
+        let officeCategoryID = try await dependencyContainer.categoryService.createCategory(
+            name: "Office",
+            parentCategoryID: nil,
+            icon: "briefcase",
+            colorToken: "blue",
+            type: .expense
+        )
+
         let id1 = try await dependencyContainer.transactionService.createTransaction(
-            TransactionCandidate(type: .expense, amount: Decimal(200), merchantName: "Tea Stall", categorySuggestion: "Other")
+            TransactionCandidate(type: .expense, amount: Decimal(200), merchantName: "Tea Stall", categorySuggestion: otherCategoryID)
         )
         let id2 = try await dependencyContainer.transactionService.createTransaction(
-            TransactionCandidate(type: .expense, amount: Decimal(350), merchantName: "Bakery", categorySuggestion: "Other")
+            TransactionCandidate(type: .expense, amount: Decimal(350), merchantName: "Bakery", categorySuggestion: otherCategoryID)
         )
         let id3 = try await dependencyContainer.transactionService.createTransaction(
-            TransactionCandidate(type: .expense, amount: Decimal(1200), merchantName: "Stationery", categorySuggestion: "Office")
+            TransactionCandidate(type: .expense, amount: Decimal(1200), merchantName: "Stationery", categorySuggestion: officeCategoryID)
         )
         
         let vm = TransactionsListViewModel()

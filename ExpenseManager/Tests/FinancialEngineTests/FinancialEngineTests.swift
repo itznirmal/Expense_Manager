@@ -919,7 +919,36 @@ final class FinancialEngineTests: XCTestCase {
     }
 
     @MainActor
-    func testAtomicImportRollsBackBothRecordsWhenTransactionSaveFails() async throws {
+    func testOrdinaryCreateRejectsExistingIdentifierWithoutBalanceChange() async throws {
+        let accountID = try await accountService.createAccount(
+            name: "Identity Bank", type: .bank, openingBalance: 1_000,
+            currencyCode: "INR", icon: "bank", colorToken: "blue", lastFour: nil
+        )
+        var candidate = TransactionCandidate(
+            amount: 200, currencyCode: "INR", merchantName: "Original",
+            accountSuggestion: accountID
+        )
+        let transactionID = try await transactionService.createTransaction(candidate)
+        candidate.amount = 400
+        candidate.merchantName = "Replacement"
+        do {
+            _ = try await transactionService.createTransaction(candidate)
+            XCTFail("Create must not overwrite an existing transaction or apply another balance effect.")
+        } catch TransactionServiceError.transactionIdentifierAlreadyExists(let id) {
+            XCTAssertEqual(id, transactionID)
+        }
+        let entries = try await transactionService.fetchTransactions(
+            startDate: nil, endDate: nil, categoryID: nil, accountID: accountID
+        )
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.amount, 200)
+        XCTAssertEqual(entries.first?.merchantName, "Original")
+        let balance = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balance, 800)
+    }
+
+    @MainActor
+    func testAtomicImportRejectsIdentifierCollisionWithoutChangingLedger() async throws {
         let accountID = try await accountService.createAccount(
             name: "Atomic Rollback Bank",
             type: .bank,
@@ -983,9 +1012,11 @@ final class FinancialEngineTests: XCTestCase {
                 accountLastFour: "1234",
                 source: "sms"
             )
-            XCTFail("A duplicate transaction identifier must fail the atomic save.")
+            XCTFail("A duplicate transaction identifier must fail before altering the ledger.")
+        } catch TransactionServiceError.transactionIdentifierAlreadyExists(let id) {
+            XCTAssertEqual(id, candidateID.uuidString)
         } catch {
-            // Expected: the transaction's unique identifier conflicts with the first record.
+            XCTFail("Expected an identifier collision, got \(error)")
         }
 
         let transactionRecords = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())

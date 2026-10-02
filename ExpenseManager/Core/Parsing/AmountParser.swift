@@ -35,22 +35,22 @@ public struct AmountParser: Sendable {
     
     /// Currency prefix and suffix pattern definitions.
     private static let currencyPrefixPatterns: [(pattern: String, currencyCode: String)] = [
-        ("(?i)(?:₹|rs\\.?|inr)\\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)", "INR"),
-        ("(?i)(?:\\$|usd)\\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)", "USD"),
-        ("(?i)(?:€|eur)\\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)", "EUR"),
-        ("(?i)(?:£|gbp)\\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)", "GBP")
+        ("(?i)(?:₹|rs\\.?|inr)\\s*([0-9]{1,3}(?:,[0-9]{2,3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)", "INR"),
+        ("(?i)(?:\\$|usd)\\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)", "USD"),
+        ("(?i)(?:€|eur)\\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)", "EUR"),
+        ("(?i)(?:£|gbp)\\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)", "GBP")
     ]
     
     private static let currencySuffixPatterns: [(pattern: String, currencyCode: String)] = [
-        ("(?i)([0-9]{1,3}(?:,[0-9]{2,3})*(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)\\s*(?:₹|rs\\.?|rupees?|inr|bucks)", "INR"),
-        ("(?i)([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)\\s*(?:\\$|usd|dollars?|cents?)", "USD"),
-        ("(?i)([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)\\s*(?:€|eur|euros?)", "EUR"),
-        ("(?i)([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)\\s*(?:£|gbp|pounds?)", "GBP")
+        ("(?i)([0-9]{1,3}(?:,[0-9]{2,3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)\\s*(?:₹|rs\\.?|rupees?|inr|bucks)", "INR"),
+        ("(?i)([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)\\s*(?:\\$|usd|dollars?|cents?)", "USD"),
+        ("(?i)([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)\\s*(?:€|eur|euros?)", "EUR"),
+        ("(?i)([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]+)?|[0-9]+(?:\\.[0-9]+)?)\\s*(?:£|gbp|pounds?)", "GBP")
     ]
     
     // Standalone number pattern (e.g., "Swiggy 520", "Coffee 350.50", "1,450.00")
     // Restrict bare digits to 1-7 digits to prevent matching 10-digit phone numbers, 12-digit UTRs, or timestamps
-    private static let bareNumberPattern = "\\b([0-9]{1,3}(?:,[0-9]{2,3})*(?:\\.[0-9]{1,2})?|[0-9]{1,7}(?:\\.[0-9]{1,2})?)\\b"
+    private static let bareNumberPattern = "\\b([0-9]{1,3}(?:,[0-9]{2,3})*(?:\\.[0-9]+)?|[0-9]{1,7}(?:\\.[0-9]+)?)\\b"
     
     /// Extracts the first or most prominent financial amount from the provided text.
     public static func extractAmount(from text: String) -> ExtractedAmount? {

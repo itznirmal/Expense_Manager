@@ -55,6 +55,7 @@ public struct MerchantNormalizer: Sendable {
         "uber": ("Uber", "Transportation"),
         "ola": ("Ola", "Transportation"),
         "rapido": ("Rapido", "Transportation"),
+        "make my trip": ("MakeMyTrip", "Travel"),
         "makemytrip": ("MakeMyTrip", "Travel"),
         "mmt": ("MakeMyTrip", "Travel"),
         "irctc": ("IRCTC", "Travel"),

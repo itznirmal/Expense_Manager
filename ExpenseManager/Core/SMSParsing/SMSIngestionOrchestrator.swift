@@ -108,7 +108,7 @@ public final class SMSIngestionOrchestrator: Sendable {
                     needsReview: false,
                     warnings: ["Exact duplicate detected"]
                 )
-                return .duplicate(reason: "Exact message hash already ingested.", candidate: candidate)
+                return .duplicate(reason: "Duplicate: exact message hash already ingested.", candidate: candidate)
             }
             
             let isTimeWindowDuplicate = try await fingerprintSvc.isDuplicate(
@@ -127,7 +127,7 @@ public final class SMSIngestionOrchestrator: Sendable {
                     needsReview: false,
                     warnings: ["Duplicate transaction within 5-minute window"]
                 )
-                return .duplicate(reason: "Similar transaction within 5-minute window already ingested.", candidate: candidate)
+                return .duplicate(reason: "Duplicate: similar transaction within 5-minute window already ingested.", candidate: candidate)
             }
         }
         
@@ -184,7 +184,7 @@ public final class SMSIngestionOrchestrator: Sendable {
                 return .saved(candidate: candidate, transactionID: transactionID)
             case .duplicate:
                 return .duplicate(
-                    reason: "Exact message hash already ingested.",
+                    reason: "Duplicate: exact message hash already ingested.",
                     candidate: candidate
                 )
             }
@@ -212,7 +212,7 @@ public final class SMSIngestionOrchestrator: Sendable {
                 return .reviewRequired(candidate: reviewCandidate, warnings: confidenceEval.warnings)
             case .duplicate:
                 return .duplicate(
-                    reason: "Exact message hash already ingested.",
+                    reason: "Duplicate: exact message hash already ingested.",
                     candidate: reviewCandidate
                 )
             }
@@ -260,7 +260,7 @@ public final class SMSIngestionOrchestrator: Sendable {
         switch error {
         case .ambiguousAccountSuggestion(_), .transactionMissingSourceAccount, .transactionTypeRequiresReview:
             return true
-        case .transactionNotFound(_), .contextSaveFailed(_), .transferMissingDestination,
+        case .transactionNotFound(_), .transactionIdentifierAlreadyExists(_), .contextSaveFailed(_), .transferMissingDestination,
              .transferSourceAndDestinationMustBeDistinct, .cashWithdrawalMissingCashAccount,
              .accountCurrencyMismatch(_, _, _), .splitAmountsMustEqualParent, .cannotSplitPendingOrTransfer:
             return false

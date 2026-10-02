@@ -59,6 +59,31 @@ final class HybridParserTests: XCTestCase {
         XCTAssertEqual(result?.amount, Decimal(85000))
         XCTAssertEqual(result?.currencyCode, "INR")
     }
+
+    func testAmountParserLargeForeignCurrencyValuesKeepAllDigits() {
+        let fixtures: [(text: String, amount: Decimal, currencyCode: String)] = [
+            ("USD 12500.00 received", Decimal(12500), "USD"),
+            ("USD 1000.50 received", Decimal(string: "1000.50")!, "USD"),
+            ("12,500.00 USD received", Decimal(12500), "USD"),
+            ("EUR 12500.00 received", Decimal(12500), "EUR"),
+            ("12,500.00 EUR received", Decimal(12500), "EUR"),
+            ("GBP 12500.00 received", Decimal(12500), "GBP"),
+            ("12,500.00 GBP received", Decimal(12500), "GBP")
+        ]
+
+        for fixture in fixtures {
+            let result = AmountParser.extractAmount(from: fixture.text)
+            XCTAssertEqual(result?.amount, fixture.amount, "Failed amount for \(fixture.text)")
+            XCTAssertEqual(result?.currencyCode, fixture.currencyCode, "Failed currency for \(fixture.text)")
+        }
+
+        guard let precise = AmountParser.extractAmount(from: "USD 1000.001 received") else {
+            return XCTFail("The parser must retain the whole amount token for precision validation.")
+        }
+        XCTAssertEqual(precise.amount, Decimal(string: "1000.001")!)
+        XCTAssertEqual(precise.currencyCode, "USD")
+        XCTAssertThrowsError(try MoneyValidation.validate(amount: precise.amount, currencyCode: precise.currencyCode))
+    }
     
     func testAmountParserRupeesSuffix() {
         let result = AmountParser.extractAmount(from: "Paid 520 rupees to Swiggy")

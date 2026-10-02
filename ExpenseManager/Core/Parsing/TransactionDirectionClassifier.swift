@@ -61,7 +61,7 @@ public struct TransactionDirectionClassifier: Sendable {
     /// Classifies the transaction text into accounting direction.
     public static func classify(text: String) -> DirectionClassification {
         let lowercased = text.lowercased()
-        
+
         // 1. Check Refund Keywords
         let matchedRefund = refundKeywords.filter { containsKeyword(in: lowercased, keyword: $0) }
         if !matchedRefund.isEmpty {
@@ -73,11 +73,33 @@ public struct TransactionDirectionClassifier: Sendable {
         if !matchedWithdrawal.isEmpty {
             return DirectionClassification(type: .cashWithdrawal, confidence: 0.95, matchedKeywords: matchedWithdrawal)
         }
+
+        // Card authorization messages commonly say "Txn of ... done on Credit Card"
+        // without using a debit verb. They represent a spend; the word "credit"
+        // describes the card product, not an incoming ledger entry.
+        if isCardSpend(lowercased) {
+            return DirectionClassification(type: .expense, confidence: 0.90, matchedKeywords: ["card spend"])
+        }
         
         // 3. Check Income Keywords (Prioritized over generic Transfer keywords to prevent "credited by salary transfer" misclassification)
-        let matchedIncome = incomeKeywords.filter { containsKeyword(in: lowercased, keyword: $0) }
+        let isCreditCardPhrase = lowercased.range(of: "\\bcredit\\s*card\\b", options: .regularExpression) != nil
+        let matchedIncome = incomeKeywords.filter { keyword in
+            guard !(keyword == "credit" && isCreditCardPhrase) else { return false }
+            return containsKeyword(in: lowercased, keyword: keyword)
+        }
         if !matchedIncome.isEmpty {
             return DirectionClassification(type: .income, confidence: 0.95, matchedKeywords: matchedIncome)
+        }
+
+        // A bank may mention an internal transfer while describing the debit
+        // from the user's account (for example, an SBI UPI spend). An explicit
+        // debit verb is the accounting direction for that event.
+        let explicitDebitKeywords = ["debited", "debit"]
+        let matchedExplicitDebit = explicitDebitKeywords.filter {
+            containsKeyword(in: lowercased, keyword: $0)
+        }
+        if !matchedExplicitDebit.isEmpty {
+            return DirectionClassification(type: .expense, confidence: 0.95, matchedKeywords: matchedExplicitDebit)
         }
         
         // 4. Check Transfer Keywords
@@ -94,6 +116,11 @@ public struct TransactionDirectionClassifier: Sendable {
         
         // Default fallback: In financial tracking, short text entries like "Swiggy 520" or "Coffee 350" are expenses
         return DirectionClassification(type: .expense, confidence: 0.70, matchedKeywords: [])
+    }
+
+    private static func isCardSpend(_ text: String) -> Bool {
+        let pattern = "\\b(?:txn|tranx|transaction)\\s+of\\b.*\\bcard\\b"
+        return text.range(of: pattern, options: .regularExpression) != nil
     }
     
     private static func containsKeyword(in text: String, keyword: String) -> Bool {
