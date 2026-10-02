@@ -22,7 +22,6 @@ final class TransactionLedgerInvariantTests: XCTestCase {
 
     @MainActor
     override func setUp() async throws {
-        try await super.setUp()
         modelContainer = try DatabaseContainer.inMemory()
         transactionService = SwiftDataTransactionService(modelContainer: modelContainer)
         accountService = SwiftDataAccountService(modelContainer: modelContainer)
@@ -33,7 +32,6 @@ final class TransactionLedgerInvariantTests: XCTestCase {
         modelContainer = nil
         transactionService = nil
         accountService = nil
-        try await super.tearDown()
     }
 
     @MainActor

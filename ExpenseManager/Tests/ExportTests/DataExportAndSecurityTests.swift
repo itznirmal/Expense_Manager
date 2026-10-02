@@ -19,7 +19,6 @@ final class DataExportAndSecurityTests: XCTestCase {
     
     @MainActor
     override func setUp() async throws {
-        try await super.setUp()
         modelContainer = try DatabaseContainer.inMemory()
         dependencyContainer = DependencyContainer.live(modelContainer: modelContainer)
         exportService = DataExportService(modelContainer: modelContainer)
@@ -31,7 +30,6 @@ final class DataExportAndSecurityTests: XCTestCase {
         exportService = nil
         dependencyContainer = nil
         appState = nil
-        try await super.tearDown()
     }
     
     // MARK: - 1. CSV Formula Sanitizer (AC-SEC-1) Tests

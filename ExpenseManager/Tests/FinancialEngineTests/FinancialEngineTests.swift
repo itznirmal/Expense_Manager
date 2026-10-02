@@ -22,7 +22,6 @@ final class FinancialEngineTests: XCTestCase {
     
     @MainActor
     override func setUp() async throws {
-        try await super.setUp()
         modelContainer = try DatabaseContainer.inMemory()
         transactionService = SwiftDataTransactionService(modelContainer: modelContainer)
         accountService = SwiftDataAccountService(modelContainer: modelContainer)
@@ -40,7 +39,6 @@ final class FinancialEngineTests: XCTestCase {
         budgetService = nil
         ruleService = nil
         fingerprintService = nil
-        try await super.tearDown()
     }
     
     // MARK: - 1. Decimal Currency Math Precision Tests

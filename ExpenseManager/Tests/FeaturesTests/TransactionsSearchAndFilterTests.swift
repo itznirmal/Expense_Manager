@@ -18,7 +18,6 @@ final class TransactionsSearchAndFilterTests: XCTestCase {
     
     @MainActor
     override func setUp() async throws {
-        try await super.setUp()
         modelContainer = try DatabaseContainer.inMemory()
         dependencyContainer = DependencyContainer.live(modelContainer: modelContainer)
         appState = AppState()
@@ -28,7 +27,6 @@ final class TransactionsSearchAndFilterTests: XCTestCase {
         modelContainer = nil
         dependencyContainer = nil
         appState = nil
-        try await super.tearDown()
     }
     
     // MARK: - 1. Search Query Filtering Test

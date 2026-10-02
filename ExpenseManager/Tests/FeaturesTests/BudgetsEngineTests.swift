@@ -17,7 +17,6 @@ final class BudgetsEngineTests: XCTestCase {
     
     @MainActor
     override func setUp() async throws {
-        try await super.setUp()
         modelContainer = try DatabaseContainer.inMemory()
         dependencyContainer = DependencyContainer.live(modelContainer: modelContainer)
     }
@@ -25,7 +24,6 @@ final class BudgetsEngineTests: XCTestCase {
     override func tearDown() async throws {
         modelContainer = nil
         dependencyContainer = nil
-        try await super.tearDown()
     }
     
     // MARK: - 1. Budget Limits & Spent Tracking
