@@ -172,7 +172,7 @@ public struct BudgetBackupDTO: Codable, Sendable, Equatable {
         alertThresholdPercent: Int,
         createdAt: Date,
         updatedAt: Date,
-        currencyCode: String = CurrencyFormatter.defaultCurrencyCode
+        currencyCode: String = "INR"
     ) {
         self.id = id
         self.categoryID = categoryID
@@ -189,7 +189,7 @@ public struct BudgetBackupDTO: Codable, Sendable, Equatable {
         self.id = try container.decode(String.self, forKey: .id)
         self.categoryID = try container.decodeIfPresent(String.self, forKey: .categoryID)
         self.currencyCode = try container.decodeIfPresent(String.self, forKey: .currencyCode)
-            ?? CurrencyFormatter.defaultCurrencyCode
+            ?? "INR"
         self.limitAmount = try container.decode(Decimal.self, forKey: .limitAmount)
         self.month = try container.decode(Date.self, forKey: .month)
         self.alertThresholdPercent = try container.decode(Int.self, forKey: .alertThresholdPercent)
@@ -202,7 +202,7 @@ public struct BudgetBackupDTO: Codable, Sendable, Equatable {
         try container.encode(id, forKey: .id)
         try container.encodeIfPresent(categoryID, forKey: .categoryID)
         // Keep legacy INR backups byte-compatible while preserving explicit non-INR currencies.
-        if currencyCode != CurrencyFormatter.defaultCurrencyCode {
+        if currencyCode != "INR" {
             try container.encode(currencyCode, forKey: .currencyCode)
         }
         try container.encode(limitAmount, forKey: .limitAmount)

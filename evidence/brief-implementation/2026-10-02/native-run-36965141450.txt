@@ -1,0 +1,5 @@
+Native run 36965141450 - commit ee4c26133c83c37766968298df7de756ca78252f
+URL: https://github.com/itznirmal/Expense_Manager/actions/runs/36965141450
+Result: app compilation failed; tests cancelled.
+Remaining diagnostics: typed IntentDialog needed, pure export helpers inherited MainActor, budget DTO argument ordering, missing explicit Schema construction and incorrect ModelContainer initializer input.
+These SDK-specific corrections are included in the next commit. Legacy INR backup defaults are also fixed independently of preferred display currency, with a regression.

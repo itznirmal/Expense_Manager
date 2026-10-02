@@ -6,6 +6,7 @@ import SwiftData
 /// separate from the current model classes; changing `BudgetRecord` in place
 /// would make the migration source ambiguous.
 public enum ExpenseManagerSchemaV1: VersionedSchema {
+    public static var schema: Schema { Schema(versionedSchema: Self.self) }
     public static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
 
     public static var models: [any PersistentModel.Type] {
@@ -289,6 +290,7 @@ public enum ExpenseManagerSchemaV1: VersionedSchema {
 /// Current schema. `BudgetRecord.currencyCode` is the V2 addition; all other
 /// current model types retain the V1 persisted fields, including split lines.
 public enum ExpenseManagerSchemaV2: VersionedSchema {
+    public static var schema: Schema { Schema(versionedSchema: Self.self) }
     public static var versionIdentifier: Schema.Version { Schema.Version(2, 0, 0) }
 
     public static var models: [any PersistentModel.Type] {

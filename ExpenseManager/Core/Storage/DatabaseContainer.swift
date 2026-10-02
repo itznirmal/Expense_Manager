@@ -38,7 +38,7 @@ public final class DatabaseContainer {
             #endif
         }
         let container = try ModelContainer(
-            for: ExpenseManagerSchemaV2.self,
+            for: ExpenseManagerSchemaV2.schema,
             migrationPlan: ExpenseManagerMigrationPlan.self,
             configurations: configuration
         )

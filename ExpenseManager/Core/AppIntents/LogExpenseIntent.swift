@@ -14,7 +14,7 @@ import AppIntents
 /// an intent from bypassing the app's own foreground lock screen.
 enum ExpenseManagerIntentSecurity {
     static let lockPreferenceKey = "requireBiometrics"
-    static let lockedDialog = "App Lock is enabled. Open Expense Manager and add this expense inside the app."
+    static let lockedDialog: IntentDialog = "App Lock is enabled. Open Expense Manager and add this expense inside the app."
 
     static var appLockEnabled: Bool {
         CurrencyFormatter.preferences.bool(forKey: lockPreferenceKey)

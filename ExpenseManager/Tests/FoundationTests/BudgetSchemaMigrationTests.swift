@@ -28,7 +28,7 @@ final class BudgetSchemaMigrationTests: XCTestCase {
             url: storeURL
         )
         let migratedContainer = try ModelContainer(
-            for: ExpenseManagerSchemaV2.self,
+            for: ExpenseManagerSchemaV2.schema,
             migrationPlan: ExpenseManagerMigrationPlan.self,
             configurations: currentConfiguration
         )
@@ -83,7 +83,7 @@ final class BudgetSchemaMigrationTests: XCTestCase {
                 url: storeURL
             )
             let legacyContainer = try ModelContainer(
-                for: ExpenseManagerSchemaV1.self,
+                for: ExpenseManagerSchemaV1.schema,
                 configurations: legacyConfiguration
             )
             let legacyContext = ModelContext(legacyContainer)

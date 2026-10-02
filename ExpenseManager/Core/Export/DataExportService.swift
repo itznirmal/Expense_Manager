@@ -401,12 +401,12 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
             BudgetBackupDTO(
                 id: bud.id,
                 categoryID: bud.categoryID,
-                currencyCode: bud.currencyCode,
                 limitAmount: bud.limitAmount,
                 month: bud.month,
                 alertThresholdPercent: bud.alertThresholdPercent,
                 createdAt: bud.createdAt,
-                updatedAt: bud.updatedAt
+                updatedAt: bud.updatedAt,
+                currencyCode: bud.currencyCode
             )
         }
         
@@ -706,20 +706,20 @@ public final class DataExportService: DataExportServiceProtocol, Sendable {
     
     // MARK: - Helper Methods
     
-    public static func createJSONEncoder() -> JSONEncoder {
+    public nonisolated static func createJSONEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         return encoder
     }
     
-    public static func createJSONDecoder() -> JSONDecoder {
+    public nonisolated static func createJSONDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }
     
-    public static func computeSHA256(for data: Data) -> String {
+    public nonisolated static func computeSHA256(for data: Data) -> String {
         let hash = SHA256.hash(data: data)
         return hash.map { String(format: "%02x", $0) }.joined()
     }
