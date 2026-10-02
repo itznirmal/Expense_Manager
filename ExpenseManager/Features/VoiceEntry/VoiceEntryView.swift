@@ -317,10 +317,9 @@ public struct VoiceEntryView: View {
                     }
                 }
                 
-                Button("Edit in Full Form") {
+                Button("Use manual entry") {
                     viewModel.stopListening()
-                    dismiss()
-                    appState.presentSheet(.manualEntry)
+                    appState.replaceSheet(with: .manualEntry())
                 }
                 .font(Typography.subheadline.weight(.semibold))
                 .foregroundStyle(ColorTokens.brandPrimary)

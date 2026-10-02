@@ -85,7 +85,10 @@ public enum BackupPayloadValidator {
         }
 
         for transaction in data.transactions {
-            guard let type = TransactionType(rawValue: transaction.type), type != .unknown else {
+            // Unknown direction is a review-queue state only; posted ledger rows
+            // must have a concrete accounting type.
+            guard let type = TransactionType(rawValue: transaction.type),
+                  type != .unknown || transaction.isPendingReview else {
                 throw invalid("Unknown transaction type '\(transaction.type)' for transaction '\(transaction.id)'.")
             }
             guard InputSource(rawValue: transaction.source) != nil else {
@@ -127,6 +130,23 @@ public enum BackupPayloadValidator {
                 }
                 if let accountID = transaction.accountID, accountID == destinationID {
                     throw invalid("Transaction '\(transaction.id)' uses the same source and destination account.")
+                }
+            }
+            if transaction.isAccepted && !transaction.isPendingReview {
+                switch type {
+                case .transfer, .cashWithdrawal:
+                    guard let accountID = transaction.accountID,
+                          let destinationID = transaction.destinationAccountID,
+                          accountID != destinationID,
+                          let destination = accountsByID[destinationID] else {
+                        throw invalid("Posted \(type.rawValue) transaction '\(transaction.id)' must have distinct source and destination accounts.")
+                    }
+                    if type == .cashWithdrawal,
+                       destination.type != AccountType.cash.rawValue {
+                        throw invalid("Posted cash withdrawal '\(transaction.id)' must use a cash destination account.")
+                    }
+                case .expense, .income, .refund, .unknown:
+                    break
                 }
             }
             // Split replaces the original row, so parentTransactionID is historical

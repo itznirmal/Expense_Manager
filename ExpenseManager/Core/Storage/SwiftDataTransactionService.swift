@@ -21,6 +21,7 @@ public enum TransactionServiceError: LocalizedError, Sendable {
     case ambiguousAccountSuggestion(String)
     case splitAmountsMustEqualParent
     case cannotSplitPendingOrTransfer
+    case transactionTypeRequiresReview
     
     public var errorDescription: String? {
         switch self {
@@ -44,6 +45,8 @@ public enum TransactionServiceError: LocalizedError, Sendable {
             return "Split line amounts must exactly equal the original transaction amount."
         case .cannotSplitPendingOrTransfer:
             return "Pending reviews and transfers cannot be split."
+        case .transactionTypeRequiresReview:
+            return "Unknown transaction types must remain in review until they are classified."
         }
     }
 }
@@ -110,6 +113,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     
     @discardableResult
     public func createTransaction(_ candidate: TransactionCandidate) async throws -> String {
+        try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         let record = try insertTransaction(candidate)
         do {
             try modelContext.save()
@@ -127,6 +131,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         accountLastFour: String?,
         source: String
     ) async throws -> TransactionImportResult {
+        try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
         if try hasDuplicateFingerprint(
             sourceHash: sourceHash,
@@ -176,6 +181,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
         }
         
         // Resolve and validate BEFORE mutating balances so failures leave the ledger intact.
+        try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
         let normalizedAmount = candidate.amount
         let oldType = record.transactionType
@@ -260,6 +266,10 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
             throw TransactionServiceError.transactionNotFound(id: id)
         }
         guard record.isPendingReview else { return }
+
+        guard record.transactionType != .unknown else {
+            throw TransactionServiceError.transactionTypeRequiresReview
+        }
 
         try MoneyValidation.validate(amount: record.amount, currencyCode: record.currencyCode)
         try validateBalanceEffectRelationships(
@@ -562,6 +572,7 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
     /// Builds and inserts a transaction without saving the context.
     /// Callers use this to compose a larger atomic persistence operation.
     private func insertTransaction(_ candidate: TransactionCandidate) throws -> TransactionRecord {
+        try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
         let normalizedAmount = candidate.amount
         let resolvedCategory = try resolveCategory(for: candidate.categorySuggestion)
@@ -631,6 +642,12 @@ public final class SwiftDataTransactionService: TransactionServiceProtocol, Send
 
         modelContext.insert(record)
         return record
+    }
+
+    private func validatePostingType(_ type: TransactionType, needsReview: Bool) throws {
+        guard type != .unknown || needsReview else {
+            throw TransactionServiceError.transactionTypeRequiresReview
+        }
     }
 
     private func hasDuplicateFingerprint(

@@ -66,6 +66,7 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
     }
     
     public func createTransaction(_ candidate: TransactionCandidate) async throws -> String {
+        try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
         return lock.withLock {
             transactions.append(candidate)
@@ -79,6 +80,7 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
         accountLastFour: String?,
         source: String
     ) async throws -> TransactionImportResult {
+        try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
         return lock.withLock {
             let amount = candidate.amount
@@ -133,6 +135,7 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
     }
     
     public func updateTransaction(id: String, candidate: TransactionCandidate) async throws {
+        try validatePostingType(candidate.type, needsReview: candidate.needsReview)
         try MoneyValidation.validate(amount: candidate.amount, currencyCode: candidate.currencyCode)
         lock.withLock {
             if let index = transactions.firstIndex(where: { $0.id.uuidString == id }) {
@@ -147,6 +150,9 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
                 throw TransactionServiceError.transactionNotFound(id: id)
             }
             guard transactions[index].needsReview else { return }
+            guard transactions[index].type != .unknown else {
+                throw TransactionServiceError.transactionTypeRequiresReview
+            }
             transactions[index].needsReview = false
         }
     }
@@ -208,6 +214,12 @@ public final class MockTransactionService: TransactionServiceProtocol, @unchecke
                 createdIDs.append(child.id.uuidString)
             }
             return createdIDs
+        }
+    }
+
+    private func validatePostingType(_ type: TransactionType, needsReview: Bool) throws {
+        guard type != .unknown || needsReview else {
+            throw TransactionServiceError.transactionTypeRequiresReview
         }
     }
 

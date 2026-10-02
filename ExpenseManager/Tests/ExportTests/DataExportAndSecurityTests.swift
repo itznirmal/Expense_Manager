@@ -579,6 +579,223 @@ final class DataExportAndSecurityTests: XCTestCase {
     }
 
     @MainActor
+    func testPostedTransferAndCashWithdrawalValidationPreservesExistingLedger() async throws {
+        let sourceData = try await MockDataExportService().exportJSONBackup()
+        let sourcePayload = try DataExportService.createJSONDecoder().decode(BackupPayload.self, from: sourceData)
+        let sourceTransaction = try XCTUnwrap(sourcePayload.data.transactions.first)
+
+        let existingAccount = AccountRecord(id: "existing-account", name: "Keep Me")
+        modelContainer.mainContext.insert(existingAccount)
+        try modelContainer.mainContext.save()
+
+        let missingLegsTransaction = TransactionBackupDTO(
+            id: sourceTransaction.id,
+            type: TransactionType.transfer.rawValue,
+            amount: sourceTransaction.amount,
+            currencyCode: sourceTransaction.currencyCode,
+            merchantName: sourceTransaction.merchantName,
+            categoryID: sourceTransaction.categoryID,
+            accountID: nil,
+            destinationAccountID: nil,
+            paymentMethod: sourceTransaction.paymentMethod,
+            transactionDate: sourceTransaction.transactionDate,
+            notes: sourceTransaction.notes,
+            tags: sourceTransaction.tags,
+            source: sourceTransaction.source,
+            sourceReference: sourceTransaction.sourceReference,
+            confidence: sourceTransaction.confidence,
+            createdAt: sourceTransaction.createdAt,
+            updatedAt: sourceTransaction.updatedAt,
+            isPendingReview: false,
+            isAccepted: true,
+            reviewReasons: [],
+            parentTransactionID: nil,
+            splitGroupID: nil
+        )
+        let missingLegsData = BackupData(
+            accounts: sourcePayload.data.accounts,
+            categories: sourcePayload.data.categories,
+            tags: sourcePayload.data.tags,
+            transactions: [missingLegsTransaction],
+            budgets: sourcePayload.data.budgets,
+            merchantRules: sourcePayload.data.merchantRules,
+            importFingerprints: sourcePayload.data.importFingerprints
+        )
+        do {
+            _ = try await exportService.restoreJSONBackup(from: try encodePayload(data: missingLegsData))
+            XCTFail("Posted transfer without legs should be rejected")
+        } catch {
+            guard case .backupDecodingFailed(let reason) = error as? DataExportError else {
+                return XCTFail("Expected posted transfer leg validation failure")
+            }
+            XCTAssertTrue(reason.contains("source and destination"))
+        }
+        let accountsAfterMissingLegs = try modelContainer.mainContext.fetch(FetchDescriptor<AccountRecord>())
+        XCTAssertTrue(accountsAfterMissingLegs.contains { $0.id == "existing-account" })
+
+        let secondBank = AccountBackupDTO(
+            id: "acc_2",
+            name: "Second Bank",
+            type: AccountType.bank.rawValue,
+            currencyCode: "INR",
+            openingBalance: Decimal(0),
+            currentBalance: Decimal(0),
+            icon: "building.columns.fill",
+            colorToken: "blue",
+            lastFour: nil,
+            isArchived: false,
+            createdAt: sourceTransaction.transactionDate
+        )
+        let nonCashDestinationTransaction = TransactionBackupDTO(
+            id: sourceTransaction.id,
+            type: TransactionType.cashWithdrawal.rawValue,
+            amount: sourceTransaction.amount,
+            currencyCode: sourceTransaction.currencyCode,
+            merchantName: sourceTransaction.merchantName,
+            categoryID: sourceTransaction.categoryID,
+            accountID: sourceTransaction.accountID,
+            destinationAccountID: secondBank.id,
+            paymentMethod: sourceTransaction.paymentMethod,
+            transactionDate: sourceTransaction.transactionDate,
+            notes: sourceTransaction.notes,
+            tags: sourceTransaction.tags,
+            source: sourceTransaction.source,
+            sourceReference: sourceTransaction.sourceReference,
+            confidence: sourceTransaction.confidence,
+            createdAt: sourceTransaction.createdAt,
+            updatedAt: sourceTransaction.updatedAt,
+            isPendingReview: false,
+            isAccepted: true,
+            reviewReasons: [],
+            parentTransactionID: nil,
+            splitGroupID: nil
+        )
+        let nonCashDestinationData = BackupData(
+            accounts: sourcePayload.data.accounts + [secondBank],
+            categories: sourcePayload.data.categories,
+            tags: sourcePayload.data.tags,
+            transactions: [nonCashDestinationTransaction],
+            budgets: sourcePayload.data.budgets,
+            merchantRules: sourcePayload.data.merchantRules,
+            importFingerprints: sourcePayload.data.importFingerprints
+        )
+        do {
+            _ = try await exportService.restoreJSONBackup(from: try encodePayload(data: nonCashDestinationData))
+            XCTFail("Cash withdrawal with a noncash destination should be rejected")
+        } catch {
+            guard case .backupDecodingFailed(let reason) = error as? DataExportError else {
+                return XCTFail("Expected cash destination validation failure")
+            }
+            XCTAssertTrue(reason.contains("cash destination"))
+        }
+        let accountsAfterNonCashDestination = try modelContainer.mainContext.fetch(FetchDescriptor<AccountRecord>())
+        XCTAssertTrue(accountsAfterNonCashDestination.contains { $0.id == "existing-account" })
+    }
+
+    @MainActor
+    func testUnknownPendingTransactionRoundTripsThroughBackup() async throws {
+        let sourceData = try await MockDataExportService().exportJSONBackup()
+        let sourcePayload = try DataExportService.createJSONDecoder().decode(BackupPayload.self, from: sourceData)
+        let sourceTransaction = try XCTUnwrap(sourcePayload.data.transactions.first)
+        let unknownPending = TransactionBackupDTO(
+            id: sourceTransaction.id,
+            type: TransactionType.unknown.rawValue,
+            amount: sourceTransaction.amount,
+            currencyCode: sourceTransaction.currencyCode,
+            merchantName: sourceTransaction.merchantName,
+            categoryID: sourceTransaction.categoryID,
+            accountID: sourceTransaction.accountID,
+            destinationAccountID: nil,
+            paymentMethod: sourceTransaction.paymentMethod,
+            transactionDate: sourceTransaction.transactionDate,
+            notes: sourceTransaction.notes,
+            tags: sourceTransaction.tags,
+            source: sourceTransaction.source,
+            sourceReference: sourceTransaction.sourceReference,
+            confidence: sourceTransaction.confidence,
+            createdAt: sourceTransaction.createdAt,
+            updatedAt: sourceTransaction.updatedAt,
+            isPendingReview: true,
+            isAccepted: false,
+            reviewReasons: ["Unknown transaction direction"],
+            parentTransactionID: nil,
+            splitGroupID: nil
+        )
+        let data = BackupData(
+            accounts: sourcePayload.data.accounts,
+            categories: sourcePayload.data.categories,
+            tags: sourcePayload.data.tags,
+            transactions: [unknownPending],
+            budgets: sourcePayload.data.budgets,
+            merchantRules: sourcePayload.data.merchantRules,
+            importFingerprints: sourcePayload.data.importFingerprints
+        )
+        let backup = try encodePayload(data: data)
+        let validated = try exportService.validateBackupPayload(backup)
+        XCTAssertEqual(validated.data.transactions.first?.type, TransactionType.unknown.rawValue)
+
+        try await exportService.purgeAllData(restoreDefaultCategories: false)
+        _ = try await exportService.restoreJSONBackup(from: backup)
+
+        let records = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        let restored = try XCTUnwrap(records.first)
+        XCTAssertEqual(restored.transactionType, .unknown)
+        XCTAssertTrue(restored.isPendingReview)
+        XCTAssertFalse(restored.isAccepted)
+    }
+
+    @MainActor
+    func testPendingTransferWithIncompleteLegsRemainsRestorable() async throws {
+        let sourceData = try await MockDataExportService().exportJSONBackup()
+        let sourcePayload = try DataExportService.createJSONDecoder().decode(BackupPayload.self, from: sourceData)
+        let sourceTransaction = try XCTUnwrap(sourcePayload.data.transactions.first)
+        let pendingTransfer = TransactionBackupDTO(
+            id: sourceTransaction.id,
+            type: TransactionType.transfer.rawValue,
+            amount: sourceTransaction.amount,
+            currencyCode: sourceTransaction.currencyCode,
+            merchantName: sourceTransaction.merchantName,
+            categoryID: sourceTransaction.categoryID,
+            accountID: nil,
+            destinationAccountID: nil,
+            paymentMethod: sourceTransaction.paymentMethod,
+            transactionDate: sourceTransaction.transactionDate,
+            notes: sourceTransaction.notes,
+            tags: sourceTransaction.tags,
+            source: sourceTransaction.source,
+            sourceReference: sourceTransaction.sourceReference,
+            confidence: sourceTransaction.confidence,
+            createdAt: sourceTransaction.createdAt,
+            updatedAt: sourceTransaction.updatedAt,
+            isPendingReview: true,
+            isAccepted: false,
+            reviewReasons: ["Choose source and destination accounts"],
+            parentTransactionID: nil,
+            splitGroupID: nil
+        )
+        let data = BackupData(
+            accounts: sourcePayload.data.accounts,
+            categories: sourcePayload.data.categories,
+            tags: sourcePayload.data.tags,
+            transactions: [pendingTransfer],
+            budgets: sourcePayload.data.budgets,
+            merchantRules: sourcePayload.data.merchantRules,
+            importFingerprints: sourcePayload.data.importFingerprints
+        )
+        let backup = try encodePayload(data: data)
+        try await exportService.purgeAllData(restoreDefaultCategories: false)
+        _ = try await exportService.restoreJSONBackup(from: backup)
+
+        let records = try modelContainer.mainContext.fetch(FetchDescriptor<TransactionRecord>())
+        let restored = try XCTUnwrap(records.first)
+        XCTAssertEqual(restored.transactionType, .transfer)
+        XCTAssertTrue(restored.isPendingReview)
+        XCTAssertFalse(restored.isAccepted)
+        XCTAssertNil(restored.account)
+        XCTAssertNil(restored.destinationAccount)
+    }
+
+    @MainActor
     func testBackupValidationAcceptsISOCodeOutsideUIDisplayListAndTrailingZeros() throws {
         let amount = try XCTUnwrap(Decimal(string: "12.3400", locale: Locale(identifier: "en_US_POSIX")))
         let timestamp = Date(timeIntervalSince1970: 1_730_000_000)

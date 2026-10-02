@@ -502,6 +502,60 @@ final class TransactionLedgerInvariantTests: XCTestCase {
     }
 
     @MainActor
+    func testUnknownTransactionRemainsReviewOnlyAndCannotPost() async throws {
+        let accountID = try await makeAccount(name: "Unknown Type Account", balance: 10_000, currencyCode: "INR")
+        let unknownPending = TransactionCandidate(
+            type: .unknown,
+            amount: 250,
+            currencyCode: "INR",
+            merchantName: "Unclassified Import",
+            accountSuggestion: accountID,
+            source: .sms,
+            needsReview: true
+        )
+
+        let transactionID = try await transactionService.createTransaction(unknownPending)
+        let pending = try await transactionService.fetchPendingReviewTransactions()
+        XCTAssertEqual(pending.map(\.id), [unknownPending.id])
+        var balance = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balance, 10_000)
+
+        do {
+            try await transactionService.acceptTransaction(id: transactionID)
+            XCTFail("Unknown transaction types must remain in review")
+        } catch TransactionServiceError.transactionTypeRequiresReview {
+            // Expected.
+        } catch {
+            XCTFail("Expected transactionTypeRequiresReview, got \(error)")
+        }
+
+        let record = try XCTUnwrap(try fetchTransactionRecord(id: transactionID))
+        XCTAssertTrue(record.isPendingReview)
+        XCTAssertFalse(record.isAccepted)
+        XCTAssertFalse(record.isPosted)
+        balance = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balance, 10_000)
+
+        var postedUnknown = unknownPending
+        postedUnknown.needsReview = false
+        do {
+            _ = try await transactionService.createTransaction(postedUnknown)
+            XCTFail("Posted unknown transaction types must be rejected")
+        } catch TransactionServiceError.transactionTypeRequiresReview {
+            // Expected.
+        } catch {
+            XCTFail("Expected transactionTypeRequiresReview, got \(error)")
+        }
+
+        XCTAssertEqual(
+            try modelContext.fetch(FetchDescriptor<TransactionRecord>()).count,
+            1
+        )
+        balance = try await accountService.getAccount(id: accountID)?.balance
+        XCTAssertEqual(balance, 10_000)
+    }
+
+    @MainActor
     func testOrdinaryPostingKindsRejectCurrencyMismatchBeforeMutation() async throws {
         for type in [TransactionType.expense, .income, .refund] {
             let accountID = try await makeAccount(

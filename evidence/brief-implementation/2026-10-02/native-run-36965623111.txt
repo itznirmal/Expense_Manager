@@ -1,0 +1,4 @@
+Native run 36965623111 - commit a3b56fcb3ac9c16994d972c98c20aa3951374410
+URL: https://github.com/itznirmal/Expense_Manager/actions/runs/36965623111
+Result: app compilation failed at VoiceEntryView.swift:323 due to .manualEntry associated-value case needing a call. Tests were cancelled.
+Other earlier SDK blockers no longer appeared in this run's diagnostics. The manual fallback now queues the sheet transition correctly.

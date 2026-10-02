@@ -258,7 +258,7 @@ public final class SMSIngestionOrchestrator: Sendable {
 
     private static func requiresAccountReview(_ error: TransactionServiceError) -> Bool {
         switch error {
-        case .ambiguousAccountSuggestion(_), .transactionMissingSourceAccount:
+        case .ambiguousAccountSuggestion(_), .transactionMissingSourceAccount, .transactionTypeRequiresReview:
             return true
         case .transactionNotFound(_), .contextSaveFailed(_), .transferMissingDestination,
              .transferSourceAndDestinationMustBeDistinct, .cashWithdrawalMissingCashAccount,
