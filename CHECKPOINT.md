@@ -314,3 +314,21 @@ Published 40f1417 to GitHub main. Native macOS/Xcode run 36964522686 failed at a
 Fixed the reported actor/protocol/parameter blockers: pure backup validation is nonisolated, Schema.Version is computed, App Intent currency is initialized through its wrapper, mocks match account/fingerprint contracts, and merchant/fingerprint services return immutable Sendable DTOs instead of SwiftData models. No unchecked Sendable was added to persistence models.
 Also corrected report currency filters so they retain their selection without changing the next entry's default, and inclusive accounting bounds so fractional entries in the final second remain included. New regression coverage accompanies these fixes.
 Next: publish compiler corrections and inspect the next native run. No native passing claim yet.
+
+## 2026-10-02 - Native runtime baseline and corrections
+
+Native run 36969422668 tested 1311410 with Xcode 16.4. All targets compiled; all three UI tests passed, including first use, three destinations, invalid amount, save/relaunch/edit. The unit suite ran 213 tests with 55 failed assertions. Earlier SDK and Swift 6 fixture failures and this runtime result are preserved in evidence/brief-implementation/2026-10-02/native-run-*.txt.
+
+Corrected real source defects: complete numeric tokens and currency precision, card/debit/refund classification and bank balance extraction, whitespace and merchant normalization, explicit duplicate reasons, backup acceptance-state encoding, transaction identifier collision checks before balance effects, and account matching/validation before reversal. Both cash-withdrawal legs must also be distinct before an existing entry is changed.
+
+Corrected stale or incomplete tests: category fixtures now exist; backup balance expectations include posted spending; CSV assertions include field quoting and formula neutralization; corruption changes a real checksum; voice uses an empty mock ledger and waits for actual transcript/candidate readiness. New regressions cover foreign amount precision and ordinary/atomic identity collisions and cash-account validation. Parent inspected all changes and independently reviewed the financial guards; assertions were retained or strengthened.
+
+Published fd05c8c. Run 36970787379 is verifying the combined patch. This entry records the observed baseline and corrections, not a passing result for that new revision. Physical-device and actual old-store gates remain open in docs/MacBook_Verification_Guide.md. QUALITY_BAR.md remains frozen.
+
+## 2026-10-02 - Native verification passed; MacBook handoff
+
+Verified source: fd05c8ca157bb2e267f3123d1e092e262aa6ce95. GitHub run 36970787379 completed successfully: all targets built, 216 unit tests and 3 UI tests passed, zero failures. Toolchain: macOS 15 runner, Xcode 16.4 (16F6), iPhone 16 Pro simulator, iOS simulator SDK 18.5. Evidence: evidence/brief-implementation/2026-10-02/native-run-36970787379.txt and the run's ios-verification-fd05c8ca157bb2e267f3123d1e092e262aa6ce95 artifact (logs and xcresult).
+
+Source/brief are on GitHub main. Final evidence/handoff updates are documentation-only and do not change the tested source. BRIEF rows now distinguish simulator passing evidence from the remaining device gates; historical readiness claims remain historical. QUALITY_BAR.md is unchanged.
+
+Next: on the MacBook, follow docs/MacBook_Verification_Guide.md and run bash scripts/verify-ios.sh before further implementation. Observe budget composition, deletion, large text, VoiceOver and the guide's physical-device privacy/capture/signing scenarios. Test a preserved copy of the actual old store. Do not delete the original ledger to make a check pass. Real protected-data/disk-save failures still need device evidence; the collision regression verifies rejection before mutation.

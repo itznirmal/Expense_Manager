@@ -2,9 +2,9 @@
 
 Assessed: **2 October 2026**. Audience confirmed by the user: **everyday spending with optional budgets**.
 
-**Implementation update:** The user subsequently authorized applying this brief and storing it in GitHub. The existing app is being evolved with both local and newer remote work preserved. See [current implementation status](Brief_Implementation_Status.md) and [MacBook verification guide](MacBook_Verification_Guide.md). Ratings, source counts and line references below describe the original assessment baseline, not the updated code or a release verdict.
+**Implementation update:** The user subsequently authorized applying this brief and storing it in GitHub. The existing app has been updated with both local and newer remote work preserved. [Native run 36970787379](https://github.com/itznirmal/Expense_Manager/actions/runs/36970787379) passed at `fd05c8c`: 216 unit tests and 3 UI tests, zero failures. See [current implementation status and new native integration lessons](Brief_Implementation_Status.md) and [MacBook verification guide](MacBook_Verification_Guide.md) for the implemented scope and remaining device gates. Ratings, source counts and line references below describe the original assessment baseline, not the updated code or a release verdict.
 
-This is a portable handoff for a future implementation agent. It preserves lessons from the current app while proposing a simpler product. The user explicitly permits deviation from the existing implementation. Product recommendations below are proposals; the audience choice is confirmed. This assessment does not authorize publication, paid services, destructive migration, or sending this brief to another chat.
+This is a portable handoff for a future implementation agent. It preserves lessons from the current app while proposing a simpler product. The user explicitly permits deviation from the existing implementation. Product recommendations below began as proposals; the audience choice is confirmed. Read the current implementation status before starting so completed fixes and remaining verification work are carried forward.
 
 ## 1. Assessment basis and rating
 
@@ -22,7 +22,7 @@ The workspace already contains an iOS app, rather than a non-iOS tracker to port
 
 The overall score is a qualitative synthesis, not an arithmetic average. Source inspection can identify broken wiring and missing flows, but cannot establish visual polish, recording latency, entry speed, accessibility usability, or actual privacy behavior.
 
-**Evidence boundary:** this Windows host has no `swift`, `xcodebuild`, or `xcrun` on PATH. There are 21 unit-test source files and two UI-test methods. The pre-existing `evidence/` inventory contains four static verification text files, with no simulator screenshots or `.xcresult` artifacts. Tests existing in source are not tests passing. CI configuration exists; its latest run was not checked. See [assessment basis](../evidence/product-assessment/2026-10-02/assessment-basis.txt).
+**Original assessment evidence boundary:** this Windows host had no `swift`, `xcodebuild`, or `xcrun` on PATH. There were 21 unit-test source files and two UI-test methods. The pre-existing `evidence/` inventory contained four static verification text files, with no simulator screenshots or `.xcresult` artifacts. Tests existing in source were not tests passing. CI configuration existed; its latest run was not checked at that point. See [assessment basis](../evidence/product-assessment/2026-10-02/assessment-basis.txt). Current native results are linked in the implementation update above.
 
 Older README/release documents claim verified production readiness. Later checkpoint entries explicitly require macOS/Xcode verification, and `ISSUES.md` still contains open ISS-020. Treat the earlier readiness claims as superseded evidence, not a release verdict. The old plan targets iOS 26+, while `Package.swift` targets iOS 17; a fresh build must choose and document one core baseline.
 

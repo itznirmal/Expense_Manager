@@ -2,6 +2,8 @@
 
 This repository contains the iOS app. The audience is everyday spending with optional budgets. The product brief is [Expense_Tracker_iOS_Rebuild_Brief.md](Expense_Tracker_iOS_Rebuild_Brief.md); current implementation and evidence are tracked in [Brief_Implementation_Status.md](Brief_Implementation_Status.md).
 
+Native baseline: [GitHub run 36970787379](https://github.com/itznirmal/Expense_Manager/actions/runs/36970787379) passed at `fd05c8c` with Xcode 16.4: 216 unit tests and 3 UI tests, zero failures. The run retains the build log and `.xcresult` as an artifact. Later documentation-only commits preserve that application/test revision. Repeat the script on your Mac and record its selected toolchain; device checks below remain open.
+
 ## First run
 
 Use Xcode 16.4 or newer with an installed iOS simulator runtime and XcodeGen. The deployment target is iOS 17. GitHub CI uses Xcode 16.4 on macOS 15. `project.yml` is the project source of truth. This is an iOS application; `swift test` on the Mac host does not replace simulator tests.

@@ -36,19 +36,19 @@
 ---
 **Status Update - 2026-09-18 (Competitive Improvements)**: Compile-break remediations closed; split transactions, CSV statement import, widgets, category delete, budget threshold honor, and settings persistence landed. Generate Xcode project with `xcodegen generate` on macOS before device build. Remaining open: fully atomic restore swap-store, concurrent fingerprint race hardening, Foundation Model parser layer, OCR.
 
-## 2026-10-02 brief implementation (source status)
+## 2026-10-02 brief implementation and native evidence
 
-Historical issue IDs overlap after merging the local remediation and remote competitive work. The rows above remain historical; use BRIEF IDs for the current pass. Implementation is not native/device proof.
+Historical issue IDs overlap after merging the local remediation and remote competitive work. The rows above remain historical; use BRIEF IDs for the current pass. Native run 36970787379 passed at fd05c8c with 216 unit and 3 UI tests. Device gates remain separate.
 
 | ID | Priority | Area | Result | Status / evidence |
 |---|---|---|---|---|
-| BRIEF-01 | P1 | Entry and navigation | Today / History / Plan, currency welcome, amount-first manual entry, optional details, working edit route and typed environment injection | IMPLEMENTED / NATIVE PENDING; ManualEntryFlowTests and UITests |
-| BRIEF-02 | P1 | Financial integrity | Positive finite Decimal and ISO scale validation, all posting currency checks, posted-only reports, separate refunds and visible currency summaries | IMPLEMENTED / NATIVE PENDING; ledger, formatting, budget and analytics regressions |
-| BRIEF-03 | P1 | Import identity and atomicity | SMS mask retained, ambiguous accounts reviewed, atomic fingerprints, currency-aware statement import | IMPLEMENTED / NATIVE PENDING; SMS and split/statement tests |
-| BRIEF-04 | P1 | Backup and migration | Graph validation before replacement, rollback, legacy checksum compatibility, split provenance roundtrip, V1 to V2 budget currency fixture | IMPLEMENTED / NATIVE PENDING; export and migration tests; actual old-store upgrade remains OPEN |
+| BRIEF-01 | P1 | Entry and navigation | Today / History / Plan, currency welcome, amount-first manual entry, optional details, working edit route and typed environment injection | SIMULATOR CORE PASS; ManualEntryFlowTests and UITests; broader accessibility/UI observation pending |
+| BRIEF-02 | P1 | Financial integrity | Positive finite Decimal and ISO scale validation, all posting currency checks, posted-only reports, separate refunds and visible currency summaries | SIMULATOR UNIT PASS; ledger, formatting, budget and analytics regressions |
+| BRIEF-03 | P1 | Import identity and atomicity | SMS mask retained, ambiguous accounts reviewed, atomic fingerprints, currency-aware statement import | SIMULATOR UNIT PASS; SMS and split/statement tests |
+| BRIEF-04 | P1 | Backup and migration | Graph validation before replacement, rollback, legacy checksum compatibility, split provenance roundtrip, V1 to V2 budget currency fixture | SIMULATOR UNIT PASS; export and migration fixtures; actual old-store upgrade and disk-save failure gates remain OPEN |
 | BRIEF-05 | P1 | App Lock and lifecycle | Shared authentication generation, fail-closed settings, inactive cover and overlay suppression, protected store bootstrap without reset | IMPLEMENTED / DEVICE PENDING; AppLockStateTests; snapshots, biometric and protected-data gates OPEN |
 | BRIEF-06 | P1 | Capture and widgets | Explicit voice start/save, local recognition capability gate, authenticated intents, default-hidden financial widgets | IMPLEMENTED / DEVICE PENDING; actual voice, Shortcuts and cached widget privacy gates OPEN |
-| BRIEF-07 | P1 | Native build evidence | Shared Mac/CI verification script with stored logs/results | CI ATTEMPTED / RETEST PENDING; current status in latest CHECKPOINT |
-| BRIEF-08 | P2 | Startup recovery | Retry preserves existing store; copied-container investigation guide | IMPLEMENTED / NATIVE PENDING: confirmed backup recovery into a separate protected store; originals retained; StartupRecoveryTests |
+| BRIEF-07 | P1 | Native build evidence | Shared Mac/CI verification script with stored logs/results | PASS: run 36970787379 at fd05c8c; current status in latest CHECKPOINT |
+| BRIEF-08 | P2 | Startup recovery | Retry preserves existing store; copied-container investigation guide | SIMULATOR UNIT PASS: separate recovery store, originals retained; iOS protection configured, physical protection pending; StartupRecoveryTests |
 
 See docs/Brief_Implementation_Status.md and docs/MacBook_Verification_Guide.md. Original QUALITY_BAR.md remains frozen.

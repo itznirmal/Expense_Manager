@@ -15,3 +15,11 @@ Native GitHub compilation attempts are recorded in native-run-*.txt in this dire
 Each file identifies the run; tested revision and latest outcome are in the implementation status and checkpoint.
 Full acceptance status: docs/Brief_Implementation_Status.md
 Mac command and device gates: docs/MacBook_Verification_Guide.md
+
+Latest native verification: PASS
+Source: fd05c8ca157bb2e267f3123d1e092e262aa6ce95
+Run: https://github.com/itznirmal/Expense_Manager/actions/runs/36970787379
+Xcode 16.4 (16F6); iPhone 16 Pro simulator; iOS simulator SDK 18.5
+216 unit tests and 3 UI tests; zero failures; all targets built.
+Logs and xcresult artifact: ios-verification-fd05c8ca157bb2e267f3123d1e092e262aa6ce95
+Final documentation-only changes do not change this tested application/test revision.

@@ -8,7 +8,7 @@ A local spending tracker for **everyday expenses with optional budgets**. The cu
 - [Current implementation status and verification limits](docs/Brief_Implementation_Status.md)
 - [MacBook setup, simulator tests and device acceptance checks](docs/MacBook_Verification_Guide.md)
 
-The brief is implemented in the existing iOS source. The original assessment is historical. Release readiness requires successful native builds/tests and observed device behavior; older readiness claims elsewhere in the repository are not current proof.
+The brief is implemented in the existing iOS source. [Native CI passed](https://github.com/itznirmal/Expense_Manager/actions/runs/36970787379) at `fd05c8c`: **216 unit tests and 3 UI tests, zero failures**. The original assessment is historical. Device observation, signing, privacy and actual old-store upgrade checks remain open in the MacBook guide.
 
 ## Current source
 
@@ -34,7 +34,7 @@ open ExpenseManager.xcodeproj
 
 Choose the ExpenseManager scheme and an iPhone simulator. For a real iPhone, configure the development team and matching App Group for both app and widget. See the [MacBook guide](docs/MacBook_Verification_Guide.md) for details and recovery steps.
 
-GitHub Actions runs the same verification script on macOS 15 / Xcode 16.4 and preserves logs plus `.xcresult` artifacts. A workflow being configured does not imply it passed. Local Windows work is source-only.
+GitHub Actions runs the same verification script on macOS 15 / Xcode 16.4 and preserves logs plus `.xcresult` artifacts. The passing result above used the iPhone 16 Pro simulator and iOS simulator SDK 18.5. Local Windows checks cover source consistency; native execution was performed in CI.
 
 ## Structure
 
