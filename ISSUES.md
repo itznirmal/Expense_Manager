@@ -48,7 +48,7 @@ Historical issue IDs overlap after merging the local remediation and remote comp
 | BRIEF-04 | P1 | Backup and migration | Graph validation before replacement, rollback, legacy checksum compatibility, split provenance roundtrip, V1 to V2 budget currency fixture | IMPLEMENTED / NATIVE PENDING; export and migration tests; actual old-store upgrade remains OPEN |
 | BRIEF-05 | P1 | App Lock and lifecycle | Shared authentication generation, fail-closed settings, inactive cover and overlay suppression, protected store bootstrap without reset | IMPLEMENTED / DEVICE PENDING; AppLockStateTests; snapshots, biometric and protected-data gates OPEN |
 | BRIEF-06 | P1 | Capture and widgets | Explicit voice start/save, local recognition capability gate, authenticated intents, default-hidden financial widgets | IMPLEMENTED / DEVICE PENDING; actual voice, Shortcuts and cached widget privacy gates OPEN |
-| BRIEF-07 | P1 | Native build evidence | Shared Mac/CI verification script with stored logs/results | CI EXECUTION PENDING; current status in latest CHECKPOINT |
+| BRIEF-07 | P1 | Native build evidence | Shared Mac/CI verification script with stored logs/results | CI ATTEMPTED / RETEST PENDING; current status in latest CHECKPOINT |
 | BRIEF-08 | P2 | Startup recovery | Retry preserves existing store; copied-container investigation guide | IMPLEMENTED / NATIVE PENDING: confirmed backup recovery into a separate protected store; originals retained; StartupRecoveryTests |
 
 See docs/Brief_Implementation_Status.md and docs/MacBook_Verification_Guide.md. Original QUALITY_BAR.md remains frozen.

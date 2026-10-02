@@ -11,6 +11,7 @@ Passed source checks:
 - no DatabaseContainer.shared production fatalError fallback
 
 Native verification was not available on this Windows host.
-Native GitHub run result will be recorded separately after publication.
+Native GitHub compilation attempts are recorded in native-run-*.txt in this directory.
+Each file identifies the run; tested revision and latest outcome are in the implementation status and checkpoint.
 Full acceptance status: docs/Brief_Implementation_Status.md
 Mac command and device gates: docs/MacBook_Verification_Guide.md

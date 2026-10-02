@@ -201,6 +201,7 @@ final class SplitAndStatementImportTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testBudgetAtRiskHonorsAlertThreshold() {
         let vm = BudgetsViewModel()
         let month = Date()

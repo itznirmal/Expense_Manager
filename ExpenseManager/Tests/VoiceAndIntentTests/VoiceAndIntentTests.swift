@@ -19,8 +19,9 @@ final class VoiceAndIntentTests: XCTestCase {
     var mockCategoryService: MockCategoryService!
     var viewModel: VoiceEntryViewModel!
     
-    override func setUp() {
-        super.setUp()
+    @MainActor
+    override func setUp() async throws {
+        try await super.setUp()
         mockAudioService = MockAudioRecordingService()
         mockParserService = MockParserService()
         mockTxnService = MockTransactionService()
@@ -36,14 +37,15 @@ final class VoiceAndIntentTests: XCTestCase {
         )
     }
     
-    override func tearDown() {
+    @MainActor
+    override func tearDown() async throws {
         mockAudioService = nil
         mockParserService = nil
         mockTxnService = nil
         mockAccountService = nil
         mockCategoryService = nil
         viewModel = nil
-        super.tearDown()
+        try await super.tearDown()
     }
     
     // MARK: - Voice Entry ViewModel State Tests

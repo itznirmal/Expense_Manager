@@ -17,7 +17,7 @@ final class StartupRecoveryTests: XCTestCase {
             withIntermediateDirectories: true
         )
         originalStoreURL = temporaryDirectory.appendingPathComponent("default.store")
-        try Data("original-store-sentinel", encoding: .utf8)!.write(to: originalStoreURL, options: .atomic)
+        try Data("original-store-sentinel".utf8).write(to: originalStoreURL, options: .atomic)
 
         suiteName = "ExpenseManager.StartupRecoveryTests.\(UUID().uuidString)"
         preferences = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -60,7 +60,7 @@ final class StartupRecoveryTests: XCTestCase {
         )
         XCTAssertEqual(
             try Data(contentsOf: originalStoreURL),
-            Data("original-store-sentinel", encoding: .utf8)
+            Data("original-store-sentinel".utf8)
         )
         XCTAssertFalse(
             FileManager.default.fileExists(
@@ -98,7 +98,7 @@ final class StartupRecoveryTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: selectedURL.path))
         XCTAssertEqual(
             try Data(contentsOf: originalStoreURL),
-            Data("original-store-sentinel", encoding: .utf8)
+            Data("original-store-sentinel".utf8)
         )
     }
 
