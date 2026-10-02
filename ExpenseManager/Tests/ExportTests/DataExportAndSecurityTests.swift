@@ -894,12 +894,12 @@ final class DataExportAndSecurityTests: XCTestCase {
         let usd = BudgetBackupDTO(
             id: "budget-usd",
             categoryID: nil,
-            currencyCode: "USD",
             limitAmount: Decimal(1000),
             month: legacy.month,
             alertThresholdPercent: 80,
             createdAt: legacy.createdAt,
-            updatedAt: legacy.updatedAt
+            updatedAt: legacy.updatedAt,
+            currencyCode: "USD"
         )
         let usdObject = try XCTUnwrap(
             try JSONSerialization.jsonObject(with: DataExportService.createJSONEncoder().encode(usd)) as? [String: Any]

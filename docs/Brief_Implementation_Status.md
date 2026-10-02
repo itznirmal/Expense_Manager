@@ -30,6 +30,10 @@ The source assessment and original ratings remain historical. New source is not 
 
 The issue ledger contains overlapping IDs inherited from two histories. New changes are recorded as `BRIEF-*`, with **IMPLEMENTED / NATIVE PENDING** until execution supplies evidence. Do not interpret an older `FIXED` row as device proof.
 
+## Latest native result
+
+[Run 36967623350](https://github.com/itznirmal/Expense_Manager/actions/runs/36967623350) tested `9d8e03c` using Xcode 16.4. The app, widget and UI-test target passed compilation; unit-test compilation failed on a backup fixture's argument order, an optional accuracy assertion and actor-isolated benchmark setup. Corrections are included in the following source revision and require a new run. No passing XCTest result is claimed yet. Filtered diagnostics are in `evidence/brief-implementation/2026-10-02/native-run-36967623350.txt`.
+
 ## Remaining work for Mac/device verification
 
 Run [MacBook_Verification_Guide.md](MacBook_Verification_Guide.md), resolve native diagnostics and failed regressions, then observe the core flows at normal/large text sizes. Actual old-store migration, background snapshots, protected-data locking, biometric/Shortcuts policy, microphone teardown, cached widget privacy, share-sheet teardown and minimum iOS version remain acceptance gates.
@@ -37,3 +41,12 @@ Run [MacBook_Verification_Guide.md](MacBook_Verification_Guide.md), resolve nati
 Startup retry preserves files; a confirmed backup recovery creates a separate protected store and selects it only after successful restore. Refunds use the recorded refund date and reduce that period's category net spend. Remaining/pace is a recorded-spending estimate, not a bank balance or financial recommendation.
 
 Confirmed recurring bills/reminders, receipt OCR, cloud sync, bank connections, sharing and monetization are deferred. The brief's proposed fresh single-currency ledger is adapted to the existing multi-currency data: separate visible summaries preserve old entries and require explicit currency selection. No historical monetary records are rewritten.
+
+## Lessons from native integration
+
+- Windows source scans did not establish a native build baseline. Pinned macOS/Xcode CI exposed actual SDK signatures and Swift 6 isolation failures before any tests could run.
+- Keep SwiftData models on their owning actor. Services that cross actors return immutable Sendable values; do not mark persistence models unchecked Sendable to silence the compiler.
+- Inject the actual observable app state and dependencies through typed SwiftUI environments. Default-value environments can accidentally substitute another container or state.
+- Versioned SwiftData migrations need the SDK's real Schema instances and a file-backed upgrade fixture. A passing fixture still does not prove an existing user's development store will upgrade.
+- XCTest UI operations require main-actor isolation. Keep setup within that isolation and preserve assertions for save, relaunch and correction rather than replacing failures with launch-only tests.
+- Preserve native logs and the tested revision alongside source findings. A later source fix is not passing evidence until a new native run succeeds.

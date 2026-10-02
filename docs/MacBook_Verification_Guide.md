@@ -13,6 +13,9 @@ brew install xcodegen
 # If Xcode is not the selected developer directory:
 sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 xcodebuild -runFirstLaunch
+xcodebuild -version
+xcodegen --version
+/usr/bin/python3 --version
 bash scripts/verify-ios.sh
 open ExpenseManager.xcodeproj
 ```

@@ -15,13 +15,14 @@ final class DuplicatePreventionBenchmarkTests: XCTestCase {
     var container: ModelContainer!
     var service: ImportFingerprintService!
     
-    override func setUpWithError() throws {
+    private func setUpFingerprintStore() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         container = try ModelContainer(for: ImportFingerprintRecord.self, configurations: config)
         service = ImportFingerprintService(modelContainer: container)
     }
     
     func testExactReferenceCollision() async throws {
+        try setUpFingerprintStore()
         let date = Date()
         try await service.recordFingerprint(
             sourceHash: "hash123",
@@ -46,6 +47,7 @@ final class DuplicatePreventionBenchmarkTests: XCTestCase {
     }
     
     func testTimeWindowCollision() async throws {
+        try setUpFingerprintStore()
         let date = Date()
         try await service.recordFingerprint(
             sourceHash: "hash1",
@@ -70,6 +72,7 @@ final class DuplicatePreventionBenchmarkTests: XCTestCase {
     }
     
     func testNonDuplicateLegitimateRepeat() async throws {
+        try setUpFingerprintStore()
         let date = Date()
         try await service.recordFingerprint(
             sourceHash: "hash1",

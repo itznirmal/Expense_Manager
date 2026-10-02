@@ -442,13 +442,14 @@ final class FinancialEngineTests: XCTestCase {
         ))
         
         let budgets = try await budgetService.fetchBudgets(for: now)
-        let groceryBudget = budgets.first(where: { $0.categoryID == "cat_groceries" })
-        XCTAssertNotNil(groceryBudget)
-        XCTAssertEqual(groceryBudget?.limitAmount, Decimal(12000))
-        XCTAssertEqual(groceryBudget?.spentAmount, Decimal(3000))
-        XCTAssertEqual(groceryBudget?.remainingAmount, Decimal(9000))
-        XCTAssertEqual(groceryBudget?.progressPercent, 0.25, accuracy: 0.001)
-        XCTAssertFalse(groceryBudget?.isExceeded ?? true)
+        let groceryBudget = try XCTUnwrap(
+            budgets.first(where: { $0.categoryID == "cat_groceries" })
+        )
+        XCTAssertEqual(groceryBudget.limitAmount, Decimal(12000))
+        XCTAssertEqual(groceryBudget.spentAmount, Decimal(3000))
+        XCTAssertEqual(groceryBudget.remainingAmount, Decimal(9000))
+        XCTAssertEqual(groceryBudget.progressPercent, 0.25, accuracy: 0.001)
+        XCTAssertFalse(groceryBudget.isExceeded)
     }
     
     // MARK: - 11. Merchant Categorization Rules
